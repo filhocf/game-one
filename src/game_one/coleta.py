@@ -20,12 +20,17 @@ def buscar_concurso(jogo: str, numero: int | None = None) -> dict:
 
 
 def _normalizar(dados: dict) -> dict:
+    ordem = dados.get("dezenasSorteadasOrdemSorteio", [])
     return {
         "numero": dados["numero"],
         "data": dados["dataApuracao"],
         "dezenas": [int(d) for d in dados["listaDezenas"]],
         "local": dados.get("nomeMunicipioUFSorteio", ""),
         "acumulado": dados.get("acumulado", False),
+        "valor_acumulado": dados.get("valorAcumuladoProximoConcurso", 0) or 0,
+        "valor_estimado": dados.get("valorEstimadoProximoConcurso", 0) or 0,
+        "valor_arrecadado": dados.get("valorArrecadado", 0) or 0,
+        "ordem_sorteio": ",".join(str(int(d)) for d in ordem) if ordem else "",
     }
 
 

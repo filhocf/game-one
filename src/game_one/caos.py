@@ -1,5 +1,6 @@
 """Motor de caça a padrões no caos — gera hipóteses e testa automaticamente."""
 
+import math
 from datetime import datetime
 
 import numpy as np
@@ -10,10 +11,11 @@ from .coleta import JOGOS
 
 
 def _carregar_concursos(jogo: str) -> list[dict]:
-    """Carrega concursos com dezenas e dados do anterior."""
+    """Carrega concursos com todos os dados disponíveis."""
     conn = db.conectar()
     rows = conn.execute("""
         SELECT c.numero, c.data, c.local, c.acumulado,
+               c.valor_acumulado, c.valor_estimado, c.valor_arrecadado, c.ordem_sorteio,
                GROUP_CONCAT(d.dezena ORDER BY d.posicao) as dezenas_str
         FROM concursos c
         JOIN dezenas d ON c.jogo = d.jogo AND c.numero = d.numero
@@ -27,26 +29,88 @@ def _carregar_concursos(jogo: str) -> list[dict]:
         dt = datetime.strptime(row["data"], "%d/%m/%Y")
         dezenas = sorted(int(x) for x in row["dezenas_str"].split(","))
         prev_dezenas = sorted(int(x) for x in rows[i - 1]["dezenas_str"].split(",")) if i > 0 else []
+        ordem = [int(x) for x in row["ordem_sorteio"].split(",") if x.strip()] if row["ordem_sorteio"] else []
         concursos.append({
             "numero": row["numero"], "dt": dt, "dezenas": set(dezenas),
+            "dezenas_ord": dezenas,
             "local": row["local"] or "", "acumulado": row["acumulado"],
             "prev_dezenas": set(prev_dezenas),
+            "prev_dezenas_ord": sorted(int(x) for x in rows[i - 1]["dezenas_str"].split(",")) if i > 0 else [],
+            "valor_acumulado": row["valor_acumulado"] or 0,
+            "valor_estimado": row["valor_estimado"] or 0,
+            "valor_arrecadado": row["valor_arrecadado"] or 0,
+            "ordem_sorteio": ordem,
         })
     return concursos
 
 
 def _inverter(n: int) -> int | None:
-    """Inverte dígitos: 14→41, 03→30, 5→50."""
     s = f"{n:02d}"
     inv = int(s[::-1])
     return inv if inv > 0 else None
+
+
+def _fase_lua(dt: datetime) -> str:
+    """Calcula fase da lua (algoritmo de Conway). Retorna: nova/crescente/cheia/minguante."""
+    y, m, d = dt.year, dt.month, dt.day
+    # Algoritmo simplificado baseado no ciclo de 29.53 dias
+    # Referência: lua nova em 2000-01-06
+    ref = datetime(2000, 1, 6)
+    dias = (dt - ref).days
+    ciclo = dias % 29.53
+    if ciclo < 1.85:
+        return "nova"
+    elif ciclo < 9.23:
+        return "crescente"
+    elif ciclo < 16.61:
+        return "cheia"
+    elif ciclo < 23.99:
+        return "minguante"
+    return "nova"
+
+
+def _fase_lua_num(dt: datetime) -> int:
+    """Retorna posição no ciclo lunar (0-29)."""
+    ref = datetime(2000, 1, 6)
+    return int((dt - ref).days % 29.53)
+
+
+# Sequência de Fibonacci até 60
+_FIB = set()
+a, b = 1, 1
+while a <= 60:
+    _FIB.add(a)
+    a, b = b, a + b
+
+# Proporção áurea
+_PHI = (1 + math.sqrt(5)) / 2
+
+
+def _extrair_digitos_valor(valor: float, max_num: int) -> set[int]:
+    """Extrai dígitos significativos de um valor monetário."""
+    if valor <= 0:
+        return set()
+    nums = set()
+    # Dígitos do valor inteiro
+    s = str(int(valor))
+    for ch in s:
+        d = int(ch)
+        if 1 <= d <= max_num:
+            nums.add(d)
+    # Pares de dígitos
+    for i in range(len(s) - 1):
+        v = int(s[i:i + 2])
+        if 1 <= v <= max_num:
+            nums.add(v)
+    return nums
 
 
 def _gerar_hipoteses(max_num: int) -> list[dict]:
     """Gera todas as hipóteses a testar."""
     H = []
 
-    # --- Data ---
+    # ==================== DATA ====================
+
     def h_dia_invertido(c):
         inv = _inverter(c["dt"].day)
         return {inv} if inv and 1 <= inv <= max_num else set()
@@ -87,19 +151,20 @@ def _gerar_hipoteses(max_num: int) -> list[dict]:
     H.append({"nome": "produto_dia_mes", "cat": "data", "fn": h_produto_dia_mes,
               "desc": "dia × mês"})
 
-    def h_dia_mes_concat(c):
+    def h_dia_mes_aritmetica(c):
         d, m = c["dt"].day, c["dt"].month
         nums = set()
-        for v in [int(f"{d}{m}") if d < 10 and m < 10 else None,
-                  int(f"{m}{d}") if m < 10 and d < 10 else None,
-                  d + m, abs(d - m)]:
+        for v in [d + m, abs(d - m),
+                  int(f"{d}{m}") if d < 10 and m < 10 else None,
+                  int(f"{m}{d}") if m < 10 and d < 10 else None]:
             if v and 1 <= v <= max_num:
                 nums.add(v)
         return nums
-    H.append({"nome": "dia_mes_aritmetica", "cat": "data", "fn": h_dia_mes_concat,
+    H.append({"nome": "dia_mes_aritmetica", "cat": "data", "fn": h_dia_mes_aritmetica,
               "desc": "Dia+mês, |dia-mês|, concatenações"})
 
-    # --- Concurso ---
+    # ==================== CONCURSO ====================
+
     def h_digitos_concurso(c):
         return {int(ch) for ch in str(c["numero"]) if 1 <= int(ch) <= max_num}
     H.append({"nome": "digitos_concurso", "cat": "concurso", "fn": h_digitos_concurso,
@@ -117,7 +182,19 @@ def _gerar_hipoteses(max_num: int) -> list[dict]:
     H.append({"nome": "soma_digitos_concurso", "cat": "concurso", "fn": h_soma_digitos_conc,
               "desc": "Soma dos dígitos do número do concurso"})
 
-    # --- Temporal ---
+    def h_pares_digitos_conc(c):
+        s = str(c["numero"])
+        nums = set()
+        for i in range(len(s) - 1):
+            v = int(s[i:i + 2])
+            if 1 <= v <= max_num:
+                nums.add(v)
+        return nums
+    H.append({"nome": "pares_digitos_concurso", "cat": "concurso", "fn": h_pares_digitos_conc,
+              "desc": "Pares de dígitos consecutivos do concurso (3651→36,65,51)"})
+
+    # ==================== TEMPORAL ====================
+
     def h_dia_do_ano(c):
         v = c["dt"].timetuple().tm_yday % max_num
         return {v} if v >= 1 else {max_num}
@@ -130,14 +207,53 @@ def _gerar_hipoteses(max_num: int) -> list[dict]:
     H.append({"nome": "semana_do_ano", "cat": "temporal", "fn": h_semana_ano,
               "desc": "Semana do ano (1-53)"})
 
-    # --- Inter-sorteio ---
-    def h_repeticoes(c):
-        """Testa se dezenas do anterior que NÃO saíram agora tendem a sair."""
-        if not c["prev_dezenas"]:
+    def h_fase_lua(c):
+        v = _fase_lua_num(c["dt"]) + 1  # 1-30
+        return {v} if 1 <= v <= max_num else set()
+    H.append({"nome": "fase_lua", "cat": "temporal", "fn": h_fase_lua,
+              "desc": "Posição no ciclo lunar (1-30)"})
+
+    def h_lua_nova_cheia(c):
+        fase = _fase_lua(c["dt"])
+        pos = _fase_lua_num(c["dt"])
+        # Na lua nova/cheia, testar números baixos; crescente/minguante, altos
+        if fase in ("nova", "cheia"):
+            return {n for n in range(1, max_num // 2 + 1)}
+        return {n for n in range(max_num // 2 + 1, max_num + 1)}
+    H.append({"nome": "lua_metade", "cat": "temporal", "fn": h_lua_nova_cheia,
+              "desc": "Lua nova/cheia → metade baixa; crescente/minguante → metade alta"})
+
+    # ==================== FINANCEIRO ====================
+
+    def h_digitos_acumulado(c):
+        return _extrair_digitos_valor(c["valor_acumulado"], max_num)
+    H.append({"nome": "digitos_acumulado", "cat": "financeiro", "fn": h_digitos_acumulado,
+              "desc": "Dígitos e pares de dígitos do valor acumulado"})
+
+    def h_digitos_estimado(c):
+        return _extrair_digitos_valor(c["valor_estimado"], max_num)
+    H.append({"nome": "digitos_estimado", "cat": "financeiro", "fn": h_digitos_estimado,
+              "desc": "Dígitos e pares de dígitos do valor estimado"})
+
+    def h_digitos_arrecadado(c):
+        return _extrair_digitos_valor(c["valor_arrecadado"], max_num)
+    H.append({"nome": "digitos_arrecadado", "cat": "financeiro", "fn": h_digitos_arrecadado,
+              "desc": "Dígitos e pares de dígitos do valor arrecadado"})
+
+    def h_magnitude_premio(c):
+        """Ordem de grandeza do prêmio como dezena."""
+        v = c["valor_estimado"]
+        if v <= 0:
             return set()
-        # Dezenas do anterior que poderiam repetir (exclui as que já sabemos que repetiram)
-        # Retorna as que NÃO estavam no anterior — testa se "ausência no anterior" prediz presença
-        return c["prev_dezenas"]
+        mag = int(math.log10(v))  # 6 = milhão, 7 = dezena de milhões
+        return {mag} if 1 <= mag <= max_num else set()
+    H.append({"nome": "magnitude_premio", "cat": "financeiro", "fn": h_magnitude_premio,
+              "desc": "Ordem de grandeza do prêmio (log10)"})
+
+    # ==================== INTER-SORTEIO ====================
+
+    def h_repeticoes(c):
+        return c["prev_dezenas"] if c["prev_dezenas"] else set()
     H.append({"nome": "repeticoes_anterior", "cat": "inter-sorteio", "fn": h_repeticoes,
               "desc": "Dezenas do concurso anterior como preditoras"})
 
@@ -158,15 +274,14 @@ def _gerar_hipoteses(max_num: int) -> list[dict]:
     def h_espelho(c):
         espelhos = set()
         for d in c["prev_dezenas"]:
-            dezena = d % 10
-            dezena_inv = (d // 10) if d >= 10 else d * 10
-            if 1 <= dezena_inv <= max_num:
-                espelhos.add(dezena_inv)
+            inv = _inverter(d)
+            if inv and 1 <= inv <= max_num:
+                espelhos.add(inv)
         return espelhos
     H.append({"nome": "espelho_anterior", "cat": "inter-sorteio", "fn": h_espelho,
               "desc": "Inversão de dígitos das dezenas anteriores"})
 
-    def h_soma_pares_anterior(c):
+    def h_soma_pares(c):
         if not c["prev_dezenas"]:
             return set()
         nums = set()
@@ -177,8 +292,106 @@ def _gerar_hipoteses(max_num: int) -> list[dict]:
             if 1 <= v <= max_num:
                 nums.add(v)
         return nums
-    H.append({"nome": "soma_pares_consecutivos", "cat": "inter-sorteio", "fn": h_soma_pares_anterior,
+    H.append({"nome": "soma_pares_consecutivos", "cat": "inter-sorteio", "fn": h_soma_pares,
               "desc": "Soma de pares consecutivos do sorteio anterior mod max"})
+
+    def h_diff_consecutivos(c):
+        if not c["prev_dezenas_ord"] or len(c["prev_dezenas_ord"]) < 2:
+            return set()
+        nums = set()
+        prev = c["prev_dezenas_ord"]
+        for i in range(len(prev) - 1):
+            v = prev[i + 1] - prev[i]
+            if 1 <= v <= max_num:
+                nums.add(v)
+        return nums
+    H.append({"nome": "gaps_anterior", "cat": "inter-sorteio", "fn": h_diff_consecutivos,
+              "desc": "Diferenças entre dezenas consecutivas do anterior"})
+
+    def h_media_anterior(c):
+        if not c["prev_dezenas"]:
+            return set()
+        v = int(round(sum(c["prev_dezenas"]) / len(c["prev_dezenas"])))
+        return {v} if 1 <= v <= max_num else set()
+    H.append({"nome": "media_anterior", "cat": "inter-sorteio", "fn": h_media_anterior,
+              "desc": "Média aritmética das dezenas do anterior"})
+
+    def h_mediana_anterior(c):
+        if not c["prev_dezenas_ord"]:
+            return set()
+        v = c["prev_dezenas_ord"][len(c["prev_dezenas_ord"]) // 2]
+        return {v} if 1 <= v <= max_num else set()
+    H.append({"nome": "mediana_anterior", "cat": "inter-sorteio", "fn": h_mediana_anterior,
+              "desc": "Mediana das dezenas do anterior"})
+
+    # ==================== MATEMÁTICA ====================
+
+    def h_fibonacci(c):
+        return c["dezenas"] & _FIB
+    # Não — isso testa se as dezenas sorteadas SÃO fibonacci, não se fibonacci PREDIZ
+    # Reformular: testar se números fibonacci saem mais que não-fibonacci
+    def h_fibonacci_pred(c):
+        return {n for n in _FIB if 1 <= n <= max_num}
+    H.append({"nome": "fibonacci", "cat": "matemática", "fn": h_fibonacci_pred,
+              "desc": "Números de Fibonacci (1,2,3,5,8,13,21,34,55) saem mais?"})
+
+    def h_golden_ratio(c):
+        """Dezenas na proporção áurea do range."""
+        nums = set()
+        for k in range(1, 10):
+            v = int(round(max_num * k / _PHI)) % max_num
+            if v == 0: v = max_num
+            if 1 <= v <= max_num:
+                nums.add(v)
+        return nums
+    H.append({"nome": "golden_ratio", "cat": "matemática", "fn": h_golden_ratio,
+              "desc": "Posições na proporção áurea do range (max × k/φ)"})
+
+    def h_primos(c):
+        primos = set()
+        for n in range(2, max_num + 1):
+            if all(n % i != 0 for i in range(2, int(n**0.5) + 1)):
+                primos.add(n)
+        return primos
+    H.append({"nome": "primos", "cat": "matemática", "fn": h_primos,
+              "desc": "Números primos saem mais que compostos?"})
+
+    def h_quadrados(c):
+        return {n * n for n in range(1, int(max_num**0.5) + 1) if n * n <= max_num}
+    H.append({"nome": "quadrados_perfeitos", "cat": "matemática", "fn": h_quadrados,
+              "desc": "Quadrados perfeitos (1,4,9,16,25,36,49) saem mais?"})
+
+    def h_multiplos_7(c):
+        return {n for n in range(7, max_num + 1, 7)}
+    H.append({"nome": "multiplos_7", "cat": "matemática", "fn": h_multiplos_7,
+              "desc": "Múltiplos de 7 saem mais?"})
+
+    # ==================== ORDEM DE SORTEIO ====================
+
+    def h_primeira_bola(c):
+        """A primeira bola sorteada tende a ser de alguma faixa?"""
+        if not c["ordem_sorteio"]:
+            return set()
+        primeira = c["ordem_sorteio"][0]
+        # Testar se vizinhos da primeira bola saem
+        viz = set()
+        if primeira - 1 >= 1: viz.add(primeira - 1)
+        if primeira + 1 <= max_num: viz.add(primeira + 1)
+        return viz
+    H.append({"nome": "vizinhos_primeira_bola", "cat": "ordem", "fn": h_primeira_bola,
+              "desc": "Vizinhos da primeira bola sorteada (ordem de sorteio)"})
+
+    def h_ultima_bola_pred(c):
+        """Última bola do sorteio anterior prediz algo?"""
+        if not c["prev_dezenas_ord"]:
+            return set()
+        # Usar a maior dezena do anterior como semente
+        ultima = max(c["prev_dezenas"])
+        v = (ultima * 2) % max_num
+        if v == 0: v = max_num
+        return {v} if 1 <= v <= max_num else set()
+    H.append({"nome": "dobro_max_anterior", "cat": "inter-sorteio", "fn": h_ultima_bola_pred,
+              "desc": "Dobro da maior dezena do anterior mod max"})
 
     return H
 
@@ -189,7 +402,7 @@ def _testar_hipotese(hipotese: dict, concursos: list[dict], max_num: int, qtd_de
     tentativas = 0
     total_previstos = 0
 
-    for c in concursos[1:]:  # pula o primeiro (sem anterior)
+    for c in concursos[1:]:
         previstos = hipotese["fn"](c)
         if not previstos:
             continue
@@ -202,14 +415,13 @@ def _testar_hipotese(hipotese: dict, concursos: list[dict], max_num: int, qtd_de
         return None
 
     taxa_obs = acertos / tentativas
-    # Taxa esperada: prob de pelo menos 1 acerto dado N previstos e K dezenas em M números
     media_previstos = total_previstos / tentativas
-    taxa_esp = 1 - np.prod([(max_num - qtd_dezenas - i) / (max_num - i)
-                             for i in range(min(int(media_previstos), max_num - qtd_dezenas))])
-    if taxa_esp == 0:
+    # Taxa esperada: P(pelo menos 1 acerto) = 1 - C(M-K, N) / C(M, N)
+    # Aproximação: 1 - ((M-K)/M)^N
+    taxa_esp = 1 - ((max_num - qtd_dezenas) / max_num) ** media_previstos
+    if taxa_esp <= 0 or taxa_esp >= 1:
         taxa_esp = qtd_dezenas / max_num
 
-    # Chi-quadrado
     esperado_sim = tentativas * taxa_esp
     esperado_nao = tentativas * (1 - taxa_esp)
     if esperado_sim < 5 or esperado_nao < 5:

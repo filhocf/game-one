@@ -36,6 +36,7 @@ def _criar_tabelas(conn: sqlite3.Connection):
         CREATE INDEX IF NOT EXISTS idx_dezenas_dezena ON dezenas(jogo, dezena);
         CREATE INDEX IF NOT EXISTS idx_concursos_data ON concursos(jogo, data);
     """)
+    _migrar(conn)
 
 
 def ultimo_concurso_salvo(conn: sqlite3.Connection, jogo: str) -> int:
@@ -47,8 +48,21 @@ def ultimo_concurso_salvo(conn: sqlite3.Connection, jogo: str) -> int:
 
 def inserir_concurso(conn: sqlite3.Connection, jogo: str, dados: dict):
     conn.execute(
-        "INSERT OR IGNORE INTO concursos (jogo, numero, data, local, acumulado) VALUES (?, ?, ?, ?, ?)",
-        (jogo, dados["numero"], dados["data"], dados.get("local", ""), int(dados.get("acumulado", False))),
+        """INSERT OR IGNORE INTO concursos
+           (jogo, numero, data, local, acumulado, valor_acumulado, valor_estimado, valor_arrecadado, ordem_sorteio)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (jogo, dados["numero"], dados["data"], dados.get("local", ""),
+         int(dados.get("acumulado", False)),
+         dados.get("valor_acumulado", 0), dados.get("valor_estimado", 0),
+         dados.get("valor_arrecadado", 0), dados.get("ordem_sorteio", "")),
+    )
+    # Atualizar campos financeiros se já existia (podem ter sido 0 na primeira coleta)
+    conn.execute(
+        """UPDATE concursos SET valor_acumulado=?, valor_estimado=?, valor_arrecadado=?, ordem_sorteio=?
+           WHERE jogo=? AND numero=? AND valor_acumulado=0 AND ?>0""",
+        (dados.get("valor_acumulado", 0), dados.get("valor_estimado", 0),
+         dados.get("valor_arrecadado", 0), dados.get("ordem_sorteio", ""),
+         jogo, dados["numero"], dados.get("valor_arrecadado", 0)),
     )
     for i, d in enumerate(dados["dezenas"]):
         conn.execute(
@@ -59,3 +73,18 @@ def inserir_concurso(conn: sqlite3.Connection, jogo: str, dados: dict):
 
 def total_concursos(conn: sqlite3.Connection, jogo: str) -> int:
     return conn.execute("SELECT COUNT(*) FROM concursos WHERE jogo = ?", (jogo,)).fetchone()[0]
+
+
+def _migrar(conn: sqlite3.Connection):
+    """Adiciona colunas novas se não existem (migração incremental)."""
+    colunas = {r[1] for r in conn.execute("PRAGMA table_info(concursos)").fetchall()}
+    novas = {
+        "valor_acumulado": "REAL DEFAULT 0",
+        "valor_estimado": "REAL DEFAULT 0",
+        "valor_arrecadado": "REAL DEFAULT 0",
+        "ordem_sorteio": "TEXT DEFAULT ''",
+    }
+    for col, tipo in novas.items():
+        if col not in colunas:
+            conn.execute(f"ALTER TABLE concursos ADD COLUMN {col} {tipo}")
+    conn.commit()
