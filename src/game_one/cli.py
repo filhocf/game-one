@@ -103,6 +103,30 @@ def cmd_perfil(args):
         print(f"  Jogo {i}: {dezenas}  (soma={j['soma']} pares={j['pares']} amp={j['amplitude']} terços={j['tercos']} consec={j['consecutivos']})")
 
 
+def cmd_caos(args):
+    from .caos import cacar_padroes
+
+    for jogo in _jogos(args):
+        r = cacar_padroes(jogo, top=args.top)
+
+        print(f"{'='*70}")
+        print(f"  {r['nome']} — Caça a Padrões no Caos")
+        print(f"  {r['total_concursos']} concursos | {r['hipoteses_testadas']} hipóteses testadas | {r['hipoteses_validas']} válidas")
+        print(f"{'='*70}")
+
+        if not r["resultados"]:
+            print("\n  Nenhum padrão significativo encontrado.")
+            continue
+
+        print(f"\n  {'#':>3}  {'p-valor':>8}  {'lift':>5}  {'taxa':>6}  {'esp':>6}  {'n':>4}  {'cat':<14} {'hipótese'}")
+        print(f"  {'─'*80}")
+        for i, h in enumerate(r["resultados"], 1):
+            sig = "***" if h["p_valor"] < 0.01 else "** " if h["p_valor"] < 0.05 else "*  " if h["p_valor"] < 0.1 else "   "
+            direcao = "↑" if h["lift"] > 1 else "↓" if h["lift"] < 1 else "="
+            print(f"  {i:3d}  {h['p_valor']:8.4f}  {h['lift']:4.2f}{direcao} {h['taxa_obs']:5.1%}  {h['taxa_esp']:5.1%}  {h['tentativas']:4d}  {h['cat']:<14} {h['nome']} {sig}")
+            print(f"       {h['desc']}")
+
+
 def cmd_correlacoes(args):
     from .descoberta import correlacoes
 
@@ -178,6 +202,10 @@ def main():
     p = sub.add_parser("perfil", help="Mega-Sena: gerar jogos por perfil previsto")
     p.add_argument("--qtd", type=int, default=5, help="Quantidade de jogos")
 
+    p = sub.add_parser("caos", help="Caçar padrões no caos (hipóteses automáticas)")
+    p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
+    p.add_argument("--top", type=int, default=15, help="Quantidade de padrões no ranking")
+
     p = sub.add_parser("correlacoes", help="Analisar correlações (dia, mês, UF)")
     p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
 
@@ -186,7 +214,7 @@ def main():
     p.add_argument("--ultimos", type=int, default=30, help="Quantos concursos simular")
 
     args = parser.parse_args()
-    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "correlacoes": cmd_correlacoes, "backtesting": cmd_backtesting}[args.comando](args)
+    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "correlacoes": cmd_correlacoes, "backtesting": cmd_backtesting}[args.comando](args)
 
 
 if __name__ == "__main__":
