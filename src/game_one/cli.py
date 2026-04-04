@@ -127,6 +127,42 @@ def cmd_caos(args):
             print(f"       {h['desc']}")
 
 
+def cmd_sugerir(args):
+    from .sugerir import sugerir
+
+    for jogo in _jogos(args):
+        r = sugerir(jogo, qtd_jogos=args.qtd)
+
+        print(f"\n{'='*70}")
+        print(f"  {r['nome']} — Sugestões Inteligentes (Caos + Estatística)")
+        print(f"  Concurso-alvo: {r['concurso_alvo']} ({r['data_alvo']}) | Lua: {r['fase_lua']}")
+        print(f"  {r['hipoteses_usadas']} hipóteses significativas usadas")
+        print(f"{'='*70}")
+
+        print(f"\n  Hipóteses ativas:")
+        for h in r["hipoteses_significativas"][:8]:
+            sig = "***" if h["p_valor"] < 0.01 else "** " if h["p_valor"] < 0.05 else "*  "
+            direcao = "↑" if h["lift"] > 1 else "↓"
+            print(f"    {h['nome']:30s} lift={h['lift']:.2f}{direcao} p={h['p_valor']:.4f} {sig}")
+
+        print(f"\n  Top números (score do caos):")
+        nums_str = "  ".join(f"{n:02d}({s:.2f})" for n, s in r["top_numeros"][:15])
+        print(f"    {nums_str}")
+
+        if r["contribuicoes"]:
+            print(f"\n  Por que esses números?")
+            for n, contribs in list(r["contribuicoes"].items())[:5]:
+                c_str = ", ".join(f"{nome}({v:+.3f})" for nome, v in contribs[:3])
+                print(f"    {n:02d}: {c_str}")
+
+        print(f"\n  {'─'*70}")
+        print(f"  {args.qtd} sugestões baseadas nos padrões do caos:")
+        print(f"  * Análise estatística, não garantia de acerto\n")
+        for i, j in enumerate(r["jogos"], 1):
+            dezenas = " ".join(f"{d:02d}" for d in j["dezenas"])
+            print(f"  Jogo {i}: {dezenas}  (score={j['score']})")
+
+
 def cmd_correlacoes(args):
     from .descoberta import correlacoes
 
@@ -206,6 +242,10 @@ def main():
     p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
     p.add_argument("--top", type=int, default=15, help="Quantidade de padrões no ranking")
 
+    p = sub.add_parser("sugerir", help="Sugestões inteligentes baseadas nos padrões do caos")
+    p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
+    p.add_argument("--qtd", type=int, default=5, help="Quantidade de jogos sugeridos")
+
     p = sub.add_parser("correlacoes", help="Analisar correlações (dia, mês, UF)")
     p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
 
@@ -214,7 +254,7 @@ def main():
     p.add_argument("--ultimos", type=int, default=30, help="Quantos concursos simular")
 
     args = parser.parse_args()
-    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "correlacoes": cmd_correlacoes, "backtesting": cmd_backtesting}[args.comando](args)
+    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "backtesting": cmd_backtesting}[args.comando](args)
 
 
 if __name__ == "__main__":
