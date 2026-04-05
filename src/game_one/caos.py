@@ -29,6 +29,7 @@ def _carregar_concursos(jogo: str) -> list[dict]:
         dt = datetime.strptime(row["data"], "%d/%m/%Y")
         dezenas = sorted(int(x) for x in row["dezenas_str"].split(","))
         prev_dezenas = sorted(int(x) for x in rows[i - 1]["dezenas_str"].split(",")) if i > 0 else []
+        prev2_dezenas = sorted(int(x) for x in rows[i - 2]["dezenas_str"].split(",")) if i > 1 else []
         ordem = [int(x) for x in row["ordem_sorteio"].split(",") if x.strip()] if row["ordem_sorteio"] else []
         concursos.append({
             "numero": row["numero"], "dt": dt, "dezenas": set(dezenas),
@@ -36,6 +37,7 @@ def _carregar_concursos(jogo: str) -> list[dict]:
             "local": row["local"] or "", "acumulado": row["acumulado"],
             "prev_dezenas": set(prev_dezenas),
             "prev_dezenas_ord": sorted(int(x) for x in rows[i - 1]["dezenas_str"].split(",")) if i > 0 else [],
+            "prev2_dezenas": set(prev2_dezenas),
             "valor_acumulado": row["valor_acumulado"] or 0,
             "valor_estimado": row["valor_estimado"] or 0,
             "valor_arrecadado": row["valor_arrecadado"] or 0,
@@ -392,6 +394,74 @@ def _gerar_hipoteses(max_num: int) -> list[dict]:
         return {v} if 1 <= v <= max_num else set()
     H.append({"nome": "dobro_max_anterior", "cat": "inter-sorteio", "fn": h_ultima_bola_pred,
               "desc": "Dobro da maior dezena do anterior mod max"})
+
+    # ==================== 2ª ORDEM (padrões sobre padrões) ====================
+
+    quadrados = {n * n for n in range(1, int(max_num**0.5) + 1) if n * n <= max_num}
+
+    def h_quadrados_apos_quadrados(c):
+        """Se anterior teve 2+ quadrados, apostar em quadrados."""
+        prev_q = len(c["prev_dezenas"] & quadrados)
+        return quadrados if prev_q >= 2 else set()
+    H.append({"nome": "quadrados_apos_quadrados", "cat": "2a-ordem", "fn": h_quadrados_apos_quadrados,
+              "desc": "Se anterior teve 2+ quadrados → apostar em quadrados"})
+
+    def h_soma_anterior_mod(c):
+        """Soma das dezenas do anterior mod max_num."""
+        if not c["prev_dezenas"]:
+            return set()
+        v = sum(c["prev_dezenas"]) % max_num
+        if v == 0: v = max_num
+        return {v} if 1 <= v <= max_num else set()
+    H.append({"nome": "soma_anterior_mod", "cat": "2a-ordem", "fn": h_soma_anterior_mod,
+              "desc": "Soma das dezenas do anterior mod max"})
+
+    def h_xor_digitos_anterior(c):
+        """XOR dos dígitos das dezenas do anterior."""
+        if not c["prev_dezenas"]:
+            return set()
+        nums = set()
+        prev = sorted(c["prev_dezenas"])
+        for i in range(len(prev) - 1):
+            v = prev[i] ^ prev[i + 1]
+            if 1 <= v <= max_num:
+                nums.add(v)
+        return nums
+    H.append({"nome": "xor_anterior", "cat": "2a-ordem", "fn": h_xor_digitos_anterior,
+              "desc": "XOR entre dezenas consecutivas do anterior"})
+
+    def h_centesimos_concurso(c):
+        """Últimos 2 dígitos do concurso."""
+        v = c["numero"] % 100
+        nums = set()
+        if 1 <= v <= max_num:
+            nums.add(v)
+        # Inverter também
+        inv = _inverter(v)
+        if inv and 1 <= inv <= max_num:
+            nums.add(inv)
+        return nums
+    H.append({"nome": "centesimos_concurso", "cat": "concurso", "fn": h_centesimos_concurso,
+              "desc": "Últimos 2 dígitos do concurso e sua inversão"})
+
+    def h_amplitude_anterior(c):
+        """Amplitude do anterior como dezena."""
+        if not c["prev_dezenas"]:
+            return set()
+        amp = max(c["prev_dezenas"]) - min(c["prev_dezenas"])
+        return {amp} if 1 <= amp <= max_num else set()
+    H.append({"nome": "amplitude_anterior", "cat": "2a-ordem", "fn": h_amplitude_anterior,
+              "desc": "Amplitude (max-min) do anterior como dezena"})
+
+    def h_dezenas_ausentes_2(c):
+        """Dezenas que não saíram nos últimos 2 sorteios (se tiver dados)."""
+        if not c.get("prev2_dezenas"):
+            return set()
+        ausentes = set(range(1, max_num + 1)) - c["prev_dezenas"] - c["prev2_dezenas"]
+        # Retornar só as que têm final par (reduzir ruído)
+        return {n for n in ausentes if n % 2 == 0}
+    H.append({"nome": "ausentes_2_pares", "cat": "2a-ordem", "fn": h_dezenas_ausentes_2,
+              "desc": "Dezenas pares ausentes nos últimos 2 sorteios"})
 
     return H
 

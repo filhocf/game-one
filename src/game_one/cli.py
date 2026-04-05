@@ -53,27 +53,46 @@ def cmd_descobrir(args):
 
 def cmd_backtesting(args):
     from .descoberta import backtesting
+    from .backtesting_caos import backtesting_sugerir
 
     for jogo in _jogos(args):
-        r = backtesting(jogo, ultimos_n=args.ultimos)
+        if args.metodo in ("ml", "todos"):
+            r = backtesting(jogo, ultimos_n=args.ultimos)
 
-        print(f"\n{'='*60}")
-        print(f"  {r['nome']} — Backtesting ({r['concursos_testados']} concursos)")
-        print(f"{'='*60}")
-        print(f"\n  Acertos por concurso (top {JOGOS[jogo]['qtd_dezenas']} previstos):")
-        print(f"    Média:   {r['acertos_media']:.1f} de {JOGOS[jogo]['qtd_dezenas']}")
-        print(f"    Mediana: {r['acertos_mediana']}")
-        print(f"    Melhor:  {r['acertos_max']}")
-        print(f"    Pior:    {r['acertos_min']}")
-        print(f"    Desvio:  ±{r['acertos_std']:.1f}")
-        print(f"\n  Baseline aleatório: {r['baseline_aleatorio']:.1f}")
-        print(f"  Vantagem do modelo: {r['acertos_media'] - r['baseline_aleatorio']:+.1f}")
-        print(f"\n  Acertos com seleção ampla (top {JOGOS[jogo]['qtd_dezenas']*2}):")
-        print(f"    Média: {r['acertos_amplo_media']:.1f} de {JOGOS[jogo]['qtd_dezenas']}")
-        print(f"\n  Distribuição de acertos:")
-        for acertos, vezes in sorted(r["distribuicao"].items()):
-            barra = "█" * vezes
-            print(f"    {int(acertos):2d} acertos: {barra} ({vezes}x)")
+            print(f"\n{'='*60}")
+            print(f"  {r['nome']} — Backtesting ML ({r['concursos_testados']} concursos)")
+            print(f"{'='*60}")
+            print(f"\n  Acertos por concurso (top {JOGOS[jogo]['qtd_dezenas']} previstos):")
+            print(f"    Média:   {r['acertos_media']:.1f} de {JOGOS[jogo]['qtd_dezenas']}")
+            print(f"    Mediana: {r['acertos_mediana']}")
+            print(f"    Melhor:  {r['acertos_max']}")
+            print(f"    Pior:    {r['acertos_min']}")
+            print(f"    Desvio:  ±{r['acertos_std']:.1f}")
+            print(f"\n  Baseline aleatório: {r['baseline_aleatorio']:.1f}")
+            print(f"  Vantagem do modelo: {r['acertos_media'] - r['baseline_aleatorio']:+.1f}")
+            print(f"\n  Distribuição de acertos:")
+            for acertos, vezes in sorted(r["distribuicao"].items()):
+                barra = "█" * vezes
+                print(f"    {int(acertos):2d} acertos: {barra} ({vezes}x)")
+
+        if args.metodo in ("caos", "todos"):
+            r = backtesting_sugerir(jogo, ultimos_n=args.ultimos)
+
+            print(f"\n{'='*60}")
+            print(f"  {r['nome']} — Backtesting CAOS ({r['concursos_testados']} concursos)")
+            print(f"{'='*60}")
+            print(f"\n  Acertos por concurso (top {JOGOS[jogo]['qtd_dezenas']} previstos):")
+            print(f"    Média:   {r['caos_media']:.1f} de {JOGOS[jogo]['qtd_dezenas']}")
+            print(f"    Melhor:  {r['caos_max']}")
+            print(f"    Pior:    {r['caos_min']}")
+            print(f"    Desvio:  ±{r['caos_std']:.1f}")
+            print(f"\n  Baseline teórico: {r['baseline_teorico']:.1f}")
+            print(f"  Aleatório real:   {r['aleatorio_media']:.1f}")
+            print(f"  Vantagem caos:    {r['vantagem']:+.1f}")
+            print(f"\n  Distribuição de acertos:")
+            for acertos, vezes in sorted(r["distribuicao"].items()):
+                barra = "█" * vezes
+                print(f"    {int(acertos):2d} acertos: {barra} ({vezes}x)")
 
 
 def cmd_conferir(args):
@@ -252,6 +271,7 @@ def main():
     p = sub.add_parser("backtesting", help="Simular previsões em concursos passados")
     p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
     p.add_argument("--ultimos", type=int, default=30, help="Quantos concursos simular")
+    p.add_argument("--metodo", choices=["ml", "caos", "todos"], default="ml", help="Método a testar")
 
     args = parser.parse_args()
     {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "backtesting": cmd_backtesting}[args.comando](args)
