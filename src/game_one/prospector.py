@@ -72,6 +72,14 @@ def prospectar_rodada(jogo: str, verbose: bool = True) -> dict:
     hipoteses_prog = gerar_hipoteses_programaticas(max_num)
     todas = hipoteses_caos + hipoteses_prog
 
+    # Evoluções: mutar/cruzar padrões que já funcionaram
+    from .evolucao import gerar_evolucoes
+    padroes_ativos = [dict(r) for r in conn.execute(
+        "SELECT nome, cat, desc, p_valor, lift FROM padroes WHERE jogo=? AND ativo=1", (jogo,)
+    ).fetchall()]
+    evolucoes = gerar_evolucoes(padroes_ativos, max_num, qtd=80)
+    todas += evolucoes
+
     # Filtrar as que ainda não foram testadas (ou re-validar aleatoriamente 10%)
     novas = [h for h in todas if h["nome"] not in ja_testadas]
     revalidar = [h for h in todas if h["nome"] in ja_testadas and random.random() < 0.1]
@@ -79,8 +87,9 @@ def prospectar_rodada(jogo: str, verbose: bool = True) -> dict:
     random.shuffle(lote)
 
     if verbose:
-        print(f"\n  Prospecção {info['nome']}: {len(novas)} novas + {len(revalidar)} revalidações "
-              f"(banco: {len(ja_testadas)} já testadas)", flush=True)
+        n_evo = len([h for h in novas if h["cat"].startswith("evo-")])
+        print(f"\n  Prospecção {info['nome']}: {len(novas)} novas ({n_evo} evoluções) + "
+              f"{len(revalidar)} revalidações (banco: {len(ja_testadas)} já testadas)", flush=True)
 
     descobertas = 0
     invalidadas = 0
