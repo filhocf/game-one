@@ -106,8 +106,21 @@ def _migrar(conn: sqlite3.Connection):
             ultima_validacao TEXT NOT NULL,
             concursos_na_validacao INTEGER NOT NULL,
             ativo INTEGER DEFAULT 1,
+            p_valor_recente REAL DEFAULT 1.0,
+            lift_recente REAL DEFAULT 1.0,
+            score_confianca REAL DEFAULT 0.0,
             UNIQUE(jogo, nome)
         );
-        CREATE INDEX IF NOT EXISTS idx_padroes_jogo ON padroes(jogo, ativo, p_valor);
+        CREATE INDEX IF NOT EXISTS idx_padroes_jogo ON padroes(jogo, ativo, score_confianca);
     """)
     conn.commit()
+
+    # Migrar colunas novas de padroes
+    if conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='padroes'").fetchone()[0]:
+        cols_p = {r[1] for r in conn.execute("PRAGMA table_info(padroes)").fetchall()}
+        for col, tipo in {"p_valor_recente": "REAL DEFAULT 1.0",
+                          "lift_recente": "REAL DEFAULT 1.0",
+                          "score_confianca": "REAL DEFAULT 0.0"}.items():
+            if col not in cols_p:
+                conn.execute(f"ALTER TABLE padroes ADD COLUMN {col} {tipo}")
+        conn.commit()

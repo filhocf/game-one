@@ -66,8 +66,8 @@ def sugerir(jogo: str, qtd_jogos: int = 5, proximo_dt: datetime | None = None) -
         if not nums_sugeridos:
             continue
 
-        # Peso: quanto menor o p-valor e maior o lift, mais peso
-        peso = (1 - p["p_valor"]) * abs(p["lift"] - 1)
+        # Peso: score de confiança do banco (combina global + recente + lift)
+        peso = p.get("score_confianca", 0) or ((1 - p["p_valor"]) * abs(p["lift"] - 1))
         direcao = 1 if p["lift"] > 1 else -0.5
 
         for n in nums_sugeridos:
