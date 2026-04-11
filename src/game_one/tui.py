@@ -102,7 +102,10 @@ class HomeScreen(Screen):
 class JogoSelectScreen(Screen):
     """Base para telas que precisam selecionar jogo."""
 
-    BINDINGS = [("escape", "pop_screen", "Voltar")]
+    BINDINGS = [("escape", "go_back", "Voltar")]
+
+    def action_go_back(self):
+        self.app.pop_screen()
 
     def _jogo_select(self):
         options = [(info["nome"], jogo) for jogo, info in JOGOS.items()]
@@ -267,7 +270,10 @@ class SugerirScreen(JogoSelectScreen):
 
 
 class ConferirScreen(Screen):
-    BINDINGS = [("escape", "pop_screen", "Voltar")]
+    BINDINGS = [("escape", "go_back", "Voltar")]
+
+    def action_go_back(self):
+        self.app.pop_screen()
 
     def compose(self):
         yield Header()
