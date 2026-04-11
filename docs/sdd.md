@@ -2,129 +2,188 @@
 
 ## 1. Visão Geral
 
-Sistema de descoberta de padrões em loterias da Caixa usando ML e data mining automatizado.
+Sistema de descoberta autônoma de padrões em loterias da Caixa usando ML, geração programática de hipóteses e prospecção contínua.
 
-**Stack**: Python 3.12+, SQLite, scikit-learn, pandas, numpy, scipy
+**Stack**: Python 3.12+, SQLite, scikit-learn, pandas, numpy, scipy, textual
 
 ## 2. Arquitetura
 
 ```
-game-one (CLI)
-├── coleta.py        — API Caixa → SQLite
-├── db.py            — Conexão SQLite
-├── analise.py       — Estatísticas básicas (frequência, atraso, pares)
-├── descoberta.py    — ML ensemble (GB+RF+LR), correlações, backtesting
-├── perfil.py        — Previsão de perfil estrutural (Mega-Sena)
-├── sugestao.py      — Gerador de jogos por peso estatístico
-├── conferir.py      — Conferência de apostas
-├── caos.py          — 🆕 Motor de caça a padrões no caos
-└── cli.py           — Interface de linha de comando
+game-one (CLI + TUI)
+├── coleta.py          — API Caixa → SQLite
+├── db.py              — SQLite (concursos + padrões descobertos)
+├── analise.py         — Estatísticas básicas (frequência, atraso, pares)
+├── descoberta.py      — ML ensemble (GB+RF+LR), correlações, backtesting ML
+├── perfil.py          — Previsão de perfil estrutural (Mega-Sena)
+├── caos.py            — Motor de hipóteses hardcoded (40 hipóteses em 8 categorias)
+├── gerador.py         — 🆕 Gerador programático (757+ hipóteses combinatórias)
+├── prospector.py      — 🆕 Busca contínua de padrões → banco de padrões
+├── sugerir.py         — Sugestões via banco de padrões (consumidor)
+├── conferir.py        — Conferência de apostas
+├── backtesting_caos.py — Backtesting do motor de caos
+├── tui.py             — 🆕 Interface visual interativa (Textual)
+└── cli.py             — Interface de linha de comando
 ```
 
 ## 3. Banco de Dados
 
 ```sql
-concursos (jogo, numero, data, local, acumulado)
+-- Dados brutos
+concursos (jogo, numero, data, local, acumulado,
+           valor_acumulado, valor_estimado, valor_arrecadado, ordem_sorteio)
 dezenas   (jogo, numero, dezena, posicao)
+
+-- Conhecimento acumulado
+padroes   (jogo, nome, cat, desc, formula,
+           p_valor, lift, taxa_obs, taxa_esp, tentativas,
+           descoberto_em, ultima_validacao, concursos_na_validacao, ativo)
 ```
 
-## 4. Módulo caos.py — Motor de Caça a Padrões
+O banco `data/loterias.db` é commitado no git para portabilidade entre máquinas.
 
-### 4.1 Conceito
-
-Em vez de análises fixas definidas pelo usuário, o motor **gera hipóteses automaticamente** e testa cada uma contra o histórico. Busca correlações que humanos não pensariam.
-
-### 4.2 Pipeline
+## 4. Arquitetura Produtor/Consumidor
 
 ```
-Dados brutos → Gerador de Hipóteses → Teste Estatístico → Ranking → Output
+┌──────────────────────────────────────────────┐
+│  PROSPECTOR (produtor)                       │
+│  Gera hipóteses novas, testa contra          │
+│  histórico, salva descobertas no banco       │
+│  Revalida 10% dos existentes por rodada      │
+│  Modo: rodada única ou contínuo (loop)       │
+└──────────────┬───────────────────────────────┘
+               │ INSERT/UPDATE padroes
+               ▼
+┌──────────────────────────────────────────────┐
+│  BANCO DE PADRÕES (tabela padroes)           │
+│  Persistente, portável via git               │
+│  Cada padrão: nome, p-valor, lift, status    │
+└──────────────┬───────────────────────────────┘
+               │ SELECT WHERE ativo=1
+               ▼
+┌──────────────────────────────────────────────┐
+│  SUGERIR (consumidor)                        │
+│  Consulta padrões ativos, aplica ao contexto │
+│  do próximo concurso, gera jogos ponderados  │
+│  Se banco vazio → auto-prospecta             │
+└──────────────────────────────────────────────┘
 ```
 
-### 4.3 Gerador de Hipóteses
+## 5. Módulo gerador.py — Geração Programática de Hipóteses
 
-Cada hipótese é uma função `(concurso) → valor_derivado` que produz um número a partir dos dados do concurso. O motor testa se esse valor derivado tem correlação com as dezenas sorteadas.
+### 5.1 Conceito
 
-**Categorias implementadas (v1):**
+Em vez de hipóteses nomeadas escritas à mão, o gerador **combina operações primitivas sobre campos** automaticamente, criando centenas de hipóteses que nenhum humano pensaria.
 
-| Categoria | Hipótese | Exemplo |
-|-----------|----------|---------|
-| Data | dia_invertido | dia=14 → testa dezena 41 |
-| Data | mes_invertido | mês=04 → testa dezena 40 |
-| Data | dia_mes_concat | dia=14,mês=04 → testa 14, 04 |
-| Data | soma_digitos_data | 04/04/2026 → 0+4+0+4+2+0+2+6=18 |
-| Data | diff_dia_mes | |14-4|=10 |
-| Data | produto_dia_mes | min(14×4, max_num) |
-| Concurso | digitos_concurso | 3651 → testa 3,6,5,1 |
-| Concurso | concurso_mod | 3651 mod 25 = 1 |
-| Concurso | soma_digitos_conc | 3+6+5+1=15 |
-| Concurso | pares_digitos_conc | 3651 → 36,65,51 |
-| Temporal | dia_do_ano | 1-366 mod max_num |
-| Temporal | semana_do_ano | 1-53 |
-| Temporal | fase_lua | Posição no ciclo lunar (1-30) |
-| Temporal | lua_metade | Nova/cheia→baixos, crescente/minguante→altos |
-| Financeiro | digitos_acumulado | R$3.5M → dígitos 3,5,35 |
-| Financeiro | digitos_estimado | Idem para valor estimado |
-| Financeiro | digitos_arrecadado | Idem para valor arrecadado |
-| Financeiro | magnitude_premio | log10(valor) como dezena |
-| Inter-sorteio | repeticoes_anterior | Dezenas do anterior como preditoras |
-| Inter-sorteio | complemento | se saiu 5, testa 25-5=20 |
-| Inter-sorteio | vizinhos | se saiu 10, testa 9 e 11 |
-| Inter-sorteio | espelho | Inversão de dígitos do anterior |
-| Inter-sorteio | soma_pares | Soma de consecutivos do anterior |
-| Inter-sorteio | gaps | Diferenças entre consecutivos do anterior |
-| Inter-sorteio | media/mediana | Média e mediana do anterior |
-| Inter-sorteio | dobro_max | 2×maior_anterior mod max |
-| Matemática | fibonacci | 1,2,3,5,8,13,21,34,55 saem mais? |
-| Matemática | golden_ratio | Posições na proporção áurea |
-| Matemática | primos | Primos saem mais que compostos? |
-| Matemática | quadrados | 1,4,9,16,25,36,49 saem mais? |
-| Matemática | multiplos_7 | 7,14,21,28... saem mais? |
-| Ordem | vizinhos_primeira_bola | Vizinhos da 1ª bola sorteada |
+### 5.2 Componentes
 
-### 4.4 Teste Estatístico
+**16 campos** extraídos de cada concurso:
+- Data: dia, mês, ano (2 dígitos), dia do ano, semana
+- Concurso: número, número mod 100
+- Inter-sorteio: soma anterior, amplitude anterior, max/min anterior, média anterior, pares anterior, contagem de repetições
+- Contexto: posição lunar, magnitude do prêmio
 
-Para cada hipótese, calcula:
-- **Taxa de acerto**: % de vezes que o valor derivado apareceu nas dezenas
-- **p-valor** (chi-quadrado): probabilidade de o resultado ser por acaso
-- **Mutual Information**: informação compartilhada entre hipótese e resultado
-- **Lift**: taxa_observada / taxa_esperada
+**9 operações unárias**: identidade, mod10, mod7, inverter dígitos, soma de dígitos, raiz quadrada, log2, dobro, metade
 
-Filtra por:
-- p-valor < 0.05 (significância 95%)
-- Amostra mínima de 30 concursos
+**5 operações binárias**: soma, subtração, multiplicação, xor, módulo
 
-### 4.5 Output
+**9 extratores de conjunto**: dezenas anteriores, vizinhos, espelho, complemento, gaps, xor entre consecutivas, soma de pares, ausentes em 2 sorteios, dezenas do penúltimo
 
-Ranking das hipóteses por p-valor, mostrando:
-- Nome da hipótese
-- p-valor
-- Lift (quanto acima/abaixo do esperado)
-- Amostra (quantos concursos testados)
-- Exemplo concreto
+**Sliding windows**: padrões condicionais (ex: "se soma do anterior foi baixa → apostar em números baixos")
 
-## 5. Fluxo de Dados
+### 5.3 Combinações
+
+- Tipo 1: campo → op_unária → dezena candidata (16 × 9 = 144)
+- Tipo 2: campo_A × campo_B → op_binária → dezena (C(16,2) × 5 = 600)
+- Tipo 3: extratores de conjunto (9)
+- Tipo 4: sliding windows (4)
+- **Total: ~757 hipóteses por rodada**
+
+### 5.4 Teste Estatístico
+
+Mesmo do caos.py: chi-quadrado, lift, p-valor < 0.05, amostra mínima 30.
+
+## 6. Módulo prospector.py — Busca Contínua
+
+### 6.1 Rodada de prospecção
+
+1. Carrega hipóteses de ambos os motores (caos + gerador)
+2. Filtra as que ainda não foram testadas
+3. Seleciona 10% das já testadas para revalidação
+4. Testa cada uma contra o histórico
+5. Salva significativas (p < 0.05) no banco
+6. Desativa as que perderam significância
+
+### 6.2 Modo contínuo
+
+Loop infinito com intervalo configurável. Cada rodada pode descobrir padrões novos conforme dados são atualizados.
+
+## 7. Módulo caos.py — Motor de Hipóteses Hardcoded
+
+40 hipóteses em 8 categorias: data, concurso, temporal, financeiro, inter-sorteio, matemática, ordem, 2ª-ordem.
+
+(Detalhes mantidos do SDD anterior — ver histórico git)
+
+## 8. Interface
+
+### 8.1 CLI
+
+```bash
+game-one coletar                                      # atualizar dados
+game-one caos --jogo lotofacil --top 20               # hipóteses hardcoded
+game-one gerador --jogo lotofacil --top 30            # hipóteses programáticas
+game-one prospectar --jogo lotofacil                   # uma rodada de prospecção
+game-one prospectar --jogo todos --continuo            # prospecção contínua
+game-one sugerir --jogo lotofacil                      # sugestões via banco
+game-one descobrir --jogo lotofacil                    # ML ensemble
+game-one perfil                                        # perfil Mega-Sena
+game-one backtesting --jogo lotofacil --metodo caos    # backtesting
+game-one conferir                                      # conferir apostas
+game-one tui                                           # interface visual
+```
+
+### 8.2 TUI (Textual)
+
+Interface visual interativa com:
+- Home: status do banco (concursos + padrões por jogo)
+- Coletar: atualizar dados da Caixa
+- Caos: motor de hipóteses hardcoded
+- Gerador: hipóteses programáticas combinatórias
+- Prospector: busca de padrões + status do banco
+- Sugestões: gerar jogos via banco de padrões
+- Conferir: conferir apostas
+- Backtesting: validação histórica
+
+Navegação por teclas de atalho (C/A/G/P/S/F/B/Q) ou botões.
+
+## 9. Fluxo de Dados
 
 ```
-API Caixa ──→ coleta.py ──→ SQLite
+API Caixa ──→ coleta.py ──→ SQLite (concursos + dezenas)
                                │
-                    ┌──────────┼──────────┐
-                    ▼          ▼          ▼
-              descoberta   correlações   caos
-              (ML ensemble) (dia/mês/UF) (hipóteses auto)
-                    │          │          │
-                    └──────────┼──────────┘
-                               ▼
-                         sugestões de jogos
+              ┌────────────────┼────────────────┐
+              ▼                ▼                ▼
+         caos.py          gerador.py       descoberta.py
+         (40 hipóteses)   (757+ hipóteses)  (ML ensemble)
+              │                │
+              └───────┬────────┘
+                      ▼
+              prospector.py ──→ SQLite (padroes)
+                                    │
+                                    ▼
+                              sugerir.py ──→ jogos sugeridos
 ```
 
-## 6. Evolução Planejada
+## 10. Evolução Planejada
 
 | Versão | Feature |
 |--------|---------|
 | v0.1 ✅ | Coleta, ML ensemble, perfil, correlações, backtesting |
 | v0.2 ✅ | Motor de caos v1 (17 hipóteses em 5 categorias) |
-| v0.3 ✅ | Dados financeiros + 34 hipóteses em 7 categorias + fase da lua |
-| v0.4 | Geocoding de cidades (lat/lon) → hipóteses geográficas |
-| v0.5 | LSTM séries temporais + Optuna |
-| v0.6 | Integrar padrões do caos no gerador de sugestões |
-| v0.7 | Dashboard web |
+| v0.3 ✅ | Dados financeiros + 40 hipóteses em 8 categorias + sugerir inteligente |
+| v0.4 ✅ | Gerador programático (757+), prospector, banco de padrões, TUI |
+| v0.5 | Symbolic regression (PySR) — descobrir fórmulas matemáticas |
+| v0.6 | Cross-lottery — correlações Mega↔Lotofácil |
+| v0.7 | Meta-aprendizado — pesos dinâmicos por performance recente |
+| v0.8 | Dados externos (clima, índices econômicos) |
+| v0.9 | LSTM séries temporais + Optuna |
+| v1.0 | Dashboard web |

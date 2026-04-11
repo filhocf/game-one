@@ -1,64 +1,63 @@
 # MEMORY.md — game-one
 
 ## Última Sessão
-- **Data**: 2026-04-04 22:49
-- **Máquina**: claudio@home
+- **Data**: 2026-04-11 14:24 — em andamento
+- **Máquina**: sirdata (casa, servidor)
 - **O que foi feito**:
-  - Motor de caos v2: 40 hipóteses em 8 categorias
-  - Banco expandido: valor_acumulado, valor_estimado, valor_arrecadado, ordem_sorteio
-  - Re-coletados dados financeiros de todos os 1302 concursos
-  - Hipóteses 2ª ordem: ausentes_2_pares, amplitude_anterior, xor, soma_mod, centesimos
-  - Sugestões inteligentes (sugerir.py): combina caos + estatística, explica cada número
-  - Backtesting caos: Mega +0.1, Lotofácil +0.3 sobre baseline
-  - Conferência Mega-Sena 2992: melhor jogo acertou 2/6 (caos e perfil)
-  - Lotofácil 3652: caos Jogo 1 acertou 10/15
-  - Geradas sugestões para Lotofácil 3653 (segunda-feira)
+  - Banco portável: `data/loterias.db` commitado no git
+  - Gerador programático (`gerador.py`): 757+ hipóteses combinatórias automáticas
+  - Prospector (`prospector.py`): busca contínua → banco de padrões
+  - Sugerir reescrito: consulta banco de padrões (produtor/consumidor)
+  - TUI (`tui.py`): interface visual Textual com todas as telas
+  - Docs atualizados: SDD e user-story com F8-F11
+  - Prospecção inicial: Lotofácil 47 padrões, Mega-Sena 46 padrões
+  - Conferência: LF 3652 ML Jogo2=10/15, LF 3653 caos Jogo2=10/15, convergentes=10/14
+  - Dados atualizados: Mega #2994 (09/04), Lotofácil #3658 (10/04)
+
+## Conferência Lotofácil 3652 (02/04/2026 — ML)
+- **Resultado**: 01 03 06 07 11 12 13 15 16 18 19 20 21 23 24
+- Jogo 1: 7 acertos | Jogo 2: **10 acertos** | Jogo 3: 8 acertos
+
+## Conferência Lotofácil 3653 (04/04/2026 — Caos)
+- **Resultado**: 02 03 04 06 07 08 10 11 13 14 16 18 19 20 21
+- Jogo 1: 9 acertos | Jogo 2: **10 acertos** | Jogo 3: 9 acertos
+- Top convergentes (caos≥5 E ML≥3): **10/14 acertos**
 
 ## Conferência Mega-Sena 2992 (04/04/2026)
-- **Resultado**: 04 17 23 33 36 49 (acumulou)
-- **Melhor caos**: Jogo 3 → 2 acertos (04, 17)
-- **Melhor perfil**: Jogos 3,4,5 → 2 acertos cada
-- **ML**: máx 1 acerto
-- **Lições**: 3/6 quadrados perfeitos (raro 1.7%), 3/6 repetições do anterior (raro 0.8%)
-- **Hipóteses que acertaram**: quadrados_perfeitos(3), repeticoes_anterior(3), lua_metade(3), gaps_anterior(2), primos(2), mediana_anterior(1)
+- **Resultado**: 04 17 23 33 36 49
+- Melhor: 1 acerto (fraco)
 
-## Sugestões Lotofácil 3653 (segunda 07/04) — CONFERIR
-```
-Jogo 1: 01 02 04 05 07 09 10 13 14 16 20 21 22 24 25  (convergência máxima)
-Jogo 2: 01 02 03 04 07 09 10 11 13 16 20 21 22 23 25  (variação)
-Jogo 3: 01 04 05 09 10 11 13 14 16 19 20 21 22 24 25  (variação)
-```
-Top 15 convergentes: 01 02 04 05 07 09 10 11 13 14 16 20 21 22 25
-Forte convergência (caos≥5 E ML≥3): 01 02 04 05 07 10 13 16 20 21 22 25
+## Resultados recentes (não conferidos com sugestões)
+- LF 3654 (06/04): 01 02 03 04 06 07 11 15 17 19 20 22 23 24 25
+- LF 3655 (07/04): 01 02 04 05 06 10 11 12 17 18 19 21 22 23 24
+- LF 3656 (08/04): 03 04 06 07 08 11 12 14 15 18 19 20 21 24 25
+- LF 3657 (09/04): 01 02 04 07 08 10 12 13 17 18 19 20 22 23 24
+- LF 3658 (10/04): 02 03 04 05 09 10 11 12 13 16 18 20 22 23 24
+- MS 2993 (07/04): 03 15 31 42 43 51
+- MS 2994 (09/04): 01 10 23 31 40 55
 
-## Descobertas Significativas
-### Mega-Sena
-- lua_metade p=0.0002 (lift=1.03↑) — lua nova/cheia→baixos, crescente/minguante→altos
-- ausentes_2_pares p=0.0046 (lift=1.04↑)
-- amplitude_anterior p=0.0089 (lift=1.34↑)
-- primos p=0.0194 (lift=1.05↑)
-
-### Lotofácil
-- ausentes_2_pares p=0.0000 (lift=0.93↓ — anti-correlação!)
-- digitos_estimado p=0.0001 (lift=0.95↓)
-- quadrados_perfeitos p=0.076 (lift=1.01↑)
+## Banco de Padrões
+- Lotofácil: 47 ativos (melhor p=8e-06)
+- Mega-Sena: 46 ativos (melhor p=8.8e-05)
 
 ## Próximos Passos
-- [ ] Conferir Lotofácil 3653 (segunda 07/04)
-- [ ] LSTM para séries temporais
-- [ ] Optuna para otimização de hiperparâmetros
-- [ ] Backtesting comparativo ML vs Caos (100+ concursos)
-- [ ] Integrar amplitude_anterior e ausentes_2_pares no sugerir com mais peso
+- [ ] Push para origin
+- [ ] Symbolic regression (PySR)
+- [ ] Cross-lottery Mega↔Lotofácil
+- [ ] Meta-aprendizado — pesos dinâmicos
+- [ ] TUI polish — gráficos, dashboard acuidade
+- [ ] Backtesting comparativo: banco de padrões vs caos puro vs ML
 
 ## Comandos
 ```bash
-cd ~/git/game-one && source .venv/bin/activate
-game-one coletar                                    # atualizar dados
-game-one caos --jogo lotofacil --top 20             # caçar padrões no caos
-game-one sugerir --jogo lotofacil                   # sugestões inteligentes
-game-one descobrir --jogo lotofacil                 # ML ensemble
-game-one perfil                                     # perfil Mega-Sena
-game-one backtesting --jogo lotofacil --metodo caos # backtesting caos
-game-one backtesting --jogo lotofacil --metodo ml   # backtesting ML
-game-one conferir                                   # conferir apostas
+cd ~/git/game-one
+uv run game-one tui                                     # interface visual
+uv run game-one coletar                                 # atualizar dados
+uv run game-one prospectar --jogo lotofacil              # buscar padrões
+uv run game-one prospectar --continuo                    # busca contínua
+uv run game-one sugerir --jogo lotofacil                 # sugestões via banco
+uv run game-one gerador --jogo lotofacil --top 30        # hipóteses programáticas
+uv run game-one caos --jogo lotofacil --top 20           # hipóteses hardcoded
+uv run game-one conferir                                 # conferir apostas
+uv run game-one backtesting --jogo lotofacil --metodo caos
 ```

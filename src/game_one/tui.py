@@ -16,6 +16,7 @@ class HomeScreen(Screen):
         ("c", "coletar", "Coletar dados"),
         ("a", "analisar", "Análise caos"),
         ("g", "gerador", "Gerador programático"),
+        ("p", "prospectar", "Prospector"),
         ("s", "sugerir", "Sugestões"),
         ("f", "conferir", "Conferir apostas"),
         ("b", "backtesting", "Backtesting"),
@@ -35,8 +36,10 @@ class HomeScreen(Screen):
                 yield Button("🔍 Caos [A]", id="btn-caos", variant="primary")
                 yield Button("🧬 Gerador [G]", id="btn-gerador", variant="warning")
             with Horizontal(classes="menu-row"):
+                yield Button("🔬 Prospector [P]", id="btn-prospectar", variant="warning")
                 yield Button("💡 Sugestões [S]", id="btn-sugerir", variant="success")
                 yield Button("✅ Conferir [F]", id="btn-conferir", variant="default")
+            with Horizontal(classes="menu-row"):
                 yield Button("📊 Backtesting [B]", id="btn-backtesting", variant="default")
             yield Static("", id="output")
         yield Footer()
@@ -44,12 +47,14 @@ class HomeScreen(Screen):
     def _status_text(self) -> str:
         try:
             from . import db
+            from .prospector import stats_padroes
             conn = db.conectar()
             lines = []
             for jogo, info in JOGOS.items():
                 total = db.total_concursos(conn, jogo)
                 ultimo = db.ultimo_concurso_salvo(conn, jogo)
-                lines.append(f"  {info['nome']:15s}  {total:>5} concursos  (último: #{ultimo})")
+                s = stats_padroes(jogo)
+                lines.append(f"  {info['nome']:15s}  {total:>5} concursos  (último: #{ultimo})  🧠 {s['ativos']} padrões")
             conn.close()
             return "📊 Banco de dados:\n" + "\n".join(lines)
         except Exception as e:
@@ -60,6 +65,7 @@ class HomeScreen(Screen):
             "btn-coletar": "coletar",
             "btn-caos": "analisar",
             "btn-gerador": "gerador",
+            "btn-prospectar": "prospectar",
             "btn-sugerir": "sugerir",
             "btn-conferir": "conferir",
             "btn-backtesting": "backtesting",
@@ -76,6 +82,9 @@ class HomeScreen(Screen):
 
     def action_gerador(self):
         self.app.push_screen("gerador")
+
+    def action_prospectar(self):
+        self.app.push_screen("prospectar")
 
     def action_sugerir(self):
         self.app.push_screen("sugerir")
@@ -213,7 +222,7 @@ class SugerirScreen(JogoSelectScreen):
     def compose(self):
         yield Header()
         with VerticalScroll():
-            yield Static("💡 [bold]Sugestões Inteligentes (Caos + Estatística)[/]\n")
+            yield Static("💡 [bold]Sugestões Inteligentes[/]\n")
             yield self._jogo_select()
             yield Button("Gerar sugestões", id="btn-go", variant="success")
             yield Static("", id="result")
@@ -227,7 +236,7 @@ class SugerirScreen(JogoSelectScreen):
     def _run(self):
         jogo = self.query_one("#jogo-select", Select).value
         result = self.query_one("#result", Static)
-        result.update("⏳ Calculando sugestões...")
+        result.update("⏳ Consultando banco de padrões e calculando sugestões...")
         try:
             from .sugerir import sugerir
             jogos = list(JOGOS.keys()) if jogo == "todos" else [jogo]
@@ -235,13 +244,23 @@ class SugerirScreen(JogoSelectScreen):
             for j in jogos:
                 r = sugerir(j, qtd_jogos=5)
                 lines.append(f"\n[bold]{r['nome']}[/] — Concurso {r['concurso_alvo']} ({r['data_alvo']}) 🌙 {r['fase_lua']}")
-                lines.append(f"{r['hipoteses_usadas']} hipóteses significativas\n")
+                lines.append(f"Banco: {r['padroes_no_banco']} padrões ativos | {r['padroes_usados']} aplicáveis\n")
+                for h in r["hipoteses_significativas"][:5]:
+                    sig = "***" if h["p_valor"] < 0.01 else "**"
+                    d = "↑" if h["lift"] > 1 else "↓"
+                    lines.append(f"  {h['nome']:35s} lift={h['lift']:.2f}{d} p={h['p_valor']:.4f} {sig}")
+                lines.append("")
                 for i, jg in enumerate(r["jogos"], 1):
                     dez = " ".join(f"{d:02d}" for d in jg["dezenas"])
                     lines.append(f"  Jogo {i}: [bold green]{dez}[/]  (score={jg['score']})")
                 lines.append("")
                 top = "  ".join(f"{n:02d}({s:.2f})" for n, s in r["top_numeros"][:10])
                 lines.append(f"  Top números: {top}")
+                if r["contribuicoes"]:
+                    lines.append("\n  Por que esses números?")
+                    for n, contribs in list(r["contribuicoes"].items())[:5]:
+                        c_str = ", ".join(f"{nome}({v:+.3f})" for nome, v in contribs[:3])
+                        lines.append(f"    {n:02d}: {c_str}")
             result.update("\n".join(lines))
         except Exception as e:
             result.update(f"❌ Erro: {e}")
@@ -296,6 +315,76 @@ class ConferirScreen(Screen):
             result.update("\n".join(lines))
         except Exception as e:
             result.update(f"❌ Erro: {e}")
+
+
+class ProspectorScreen(JogoSelectScreen):
+    def compose(self):
+        yield Header()
+        with VerticalScroll():
+            yield Static("🔬 [bold]Prospector — Busca Contínua de Padrões[/]\n")
+            yield self._jogo_select()
+            with Horizontal(classes="menu-row"):
+                yield Button("Uma rodada", id="btn-once", variant="primary")
+                yield Button("Status do banco", id="btn-status", variant="default")
+            yield Static("", id="result")
+            yield DataTable(id="table")
+        yield Footer()
+
+    def on_button_pressed(self, event):
+        if event.button.id == "btn-once":
+            self._run_once()
+        elif event.button.id == "btn-status":
+            self._show_status()
+
+    @work(thread=True)
+    def _run_once(self):
+        jogo = self.query_one("#jogo-select", Select).value
+        result = self.query_one("#result", Static)
+        result.update("⏳ Prospectando...")
+        try:
+            from .prospector import prospectar_rodada, stats_padroes
+            jogos = list(JOGOS.keys()) if jogo == "todos" else [jogo]
+            lines = []
+            for j in jogos:
+                r = prospectar_rodada(j, verbose=False)
+                lines.append(f"[bold]{JOGOS[j]['nome']}[/]: +{r['descobertas']} novas, -{r['invalidadas']} invalidadas")
+                lines.append(f"  Banco: {r['ativos']} ativos / {r['total']} total | melhor p={r['melhor_p']}")
+            result.update("\n".join(lines))
+            self._load_table(jogos)
+        except Exception as e:
+            result.update(f"❌ Erro: {e}")
+
+    @work(thread=True)
+    def _show_status(self):
+        jogo = self.query_one("#jogo-select", Select).value
+        jogos = list(JOGOS.keys()) if jogo == "todos" else [jogo]
+        result = self.query_one("#result", Static)
+        try:
+            from .prospector import stats_padroes
+            lines = []
+            for j in jogos:
+                s = stats_padroes(j)
+                lines.append(f"[bold]{JOGOS[j]['nome']}[/]: {s['ativos']} ativos / {s['total']} total | melhor p={s['melhor_p']}")
+            result.update("\n".join(lines))
+            self._load_table(jogos)
+        except Exception as e:
+            result.update(f"❌ Erro: {e}")
+
+    def _load_table(self, jogos):
+        table = self.query_one("#table", DataTable)
+        table.clear(columns=True)
+        table.add_columns("#", "p-valor", "lift", "cat", "nome", "desc")
+        try:
+            from .prospector import carregar_padroes_ativos
+            i = 0
+            for j in jogos:
+                for p in carregar_padroes_ativos(j)[:20]:
+                    i += 1
+                    d = "↑" if p["lift"] > 1 else "↓"
+                    table.add_row(str(i), f"{p['p_valor']:.4f}", f"{p['lift']:.2f}{d}",
+                                  p["cat"], p["nome"], p["desc"][:50])
+        except:
+            pass
 
 
 class BacktestingScreen(JogoSelectScreen):
@@ -382,6 +471,7 @@ class GameOneApp(App):
         "coletar": ColetarScreen,
         "analisar": CaosScreen,
         "gerador": GeradorScreen,
+        "prospectar": ProspectorScreen,
         "sugerir": SugerirScreen,
         "conferir": ConferirScreen,
         "backtesting": BacktestingScreen,

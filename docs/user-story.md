@@ -2,7 +2,7 @@
 
 ## Visão
 
-Como apostador analítico, quero um sistema que **descubra padrões ocultos no caos** dos sorteios de loterias, usando data mining automatizado, para aumentar minhas chances de acerto.
+Como apostador analítico, quero um sistema que **descubra padrões ocultos no caos** dos sorteios de loterias de forma autônoma e contínua, usando geração automática de hipóteses e prospecção, para aumentar minhas chances de acerto.
 
 ## Personas
 
@@ -15,7 +15,8 @@ Como apostador analítico, quero um sistema que **descubra padrões ocultos no c
 > Como usuário, quero coletar resultados históricos da Caixa automaticamente.
 
 - `game-one coletar` — baixa Mega-Sena e Lotofácil da API pública
-- Armazena em SQLite (data, local, dezenas, acumulado)
+- Armazena em SQLite (data, local, dezenas, acumulado, valores financeiros, ordem de sorteio)
+- Banco portável via git (sync entre máquinas)
 
 ### F2 — Descoberta de Padrões por ML ✅
 > Como usuário, quero que o sistema descubra quais números têm maior probabilidade no próximo sorteio.
@@ -42,67 +43,74 @@ Como apostador analítico, quero um sistema que **descubra padrões ocultos no c
 
 - Simula previsões em N concursos históricos
 - Compara com baseline aleatório
-- `game-one backtesting --jogo lotofacil --ultimos 30`
+- `game-one backtesting --jogo lotofacil --metodo caos`
 
 ### F6 — Conferência de Apostas ✅
 > Como usuário, quero conferir minhas apostas automaticamente.
 
 - `game-one conferir`
 
-### F7 — Motor de Caça ao Caos 🆕
-> Como usuário, quero que o sistema **invente hipóteses sozinho** e teste cada uma contra o histórico, buscando correlações ocultas que humanos não pensariam.
+### F7 — Motor de Caça ao Caos ✅
+> Como usuário, quero que o sistema invente hipóteses sozinho e teste cada uma contra o histórico.
+
+- 40 hipóteses hardcoded em 8 categorias (data, concurso, temporal, financeiro, inter-sorteio, matemática, ordem, 2ª-ordem)
+- Teste estatístico: chi-quadrado, lift, p-valor
+- `game-one caos --jogo lotofacil`
+
+### F8 — Gerador Programático de Hipóteses 🆕 ✅
+> Como usuário, quero que o sistema gere hipóteses que nenhum humano pensaria, combinando operações matemáticas sobre os dados automaticamente.
 
 O sistema deve:
-1. Gerar automaticamente dezenas de hipóteses a partir dos dados
-2. Testar cada hipótese estatisticamente (chi-quadrado, mutual information)
-3. Rankear por significância estatística
-4. Apresentar as top N descobertas
+1. Combinar 16 campos × 9 operações unárias × 5 binárias automaticamente
+2. Incluir extratores de conjunto (vizinhos, espelho, gaps, xor, etc.)
+3. Incluir sliding windows (padrões condicionais)
+4. Testar cada combinação estatisticamente
+5. Gerar 757+ hipóteses por rodada
 
-#### Categorias de hipóteses:
+- `game-one gerador --jogo lotofacil --top 30`
 
-**Numerologia da data:**
-- Dia invertido (14→41): a dezena invertida do dia aparece mais?
-- Mês invertido (04→40): idem para o mês
-- Combo dia+mês: concatenação e inversões cruzadas
-- Soma dos dígitos da data completa
-- Diferença, produto, módulo entre dia e mês
+### F9 — Prospector (Busca Contínua) 🆕 ✅
+> Como usuário, quero que o sistema fique buscando padrões novos continuamente enquanto estiver ativado, acumulando conhecimento.
 
-**Numerologia do concurso:**
-- Dígitos do número do concurso
-- Concurso mod N (ciclos)
-- Soma dos dígitos do concurso
+O sistema deve:
+1. Testar hipóteses de todos os motores (caos + gerador)
+2. Salvar descobertas significativas (p < 0.05) no banco de padrões
+3. Revalidar 10% dos padrões existentes a cada rodada
+4. Desativar padrões que perderam significância
+5. Funcionar em modo rodada única ou contínuo (loop)
 
-**Contexto temporal:**
-- Dia do ano (1-366)
-- Semana do ano
-- Fase da lua no dia do sorteio
-- Dias desde o último sorteio
+- `game-one prospectar --jogo lotofacil` (uma rodada)
+- `game-one prospectar --continuo` (loop até Ctrl+C)
 
-**Contexto geográfico:**
-- Coordenadas da cidade (lat/lon → dígitos)
-- Código IBGE da cidade
+### F10 — Sugestões via Banco de Padrões 🆕 ✅
+> Como usuário, quando peço uma sugestão, quero que o sistema use TUDO que já sabe — todos os padrões já descobertos por qualquer motor — para me dar os melhores números para o próximo jogo.
 
-**Contexto financeiro:**
-- Dígitos do valor do prêmio/acumulado
-- Faixa de valor do prêmio
+O sistema deve:
+1. Consultar o banco de padrões (todos os ativos)
+2. Aplicar cada padrão ao contexto do próximo concurso
+3. Ponderar por significância (p-valor) e força (lift)
+4. Combinar com frequência histórica e atraso
+5. Se banco vazio, auto-prospectar antes de sugerir
 
-**Padrões inter-sorteios:**
-- Dezenas que repetem do anterior
-- Dezenas "atrasadas" (não saem há N jogos)
-- Espelhamento: se saiu 5, sai 25? (complemento)
-- Vizinhos: se saiu 10, saem 9 ou 11?
+- `game-one sugerir --jogo lotofacil`
 
-#### Comando:
-```bash
-game-one caos --jogo lotofacil           # roda todas as hipóteses
-game-one caos --jogo lotofacil --top 20  # mostra top 20
-```
+### F11 — Interface Visual (TUI) 🆕 ✅
+> Como usuário, quero uma interface visual interativa no terminal, com menus e navegação, em vez de decorar comandos CLI.
+
+- `game-one tui`
+- Telas: Home, Coletar, Caos, Gerador, Prospector, Sugestões, Conferir, Backtesting
+- Navegação por teclas de atalho ou botões
+- Status do banco (concursos + padrões) na tela inicial
+- DataTables para resultados tabulares
+- Workers async para não travar a interface
 
 ## Evolução Futura
 
+- [ ] Symbolic regression (PySR) — descobrir fórmulas matemáticas
+- [ ] Cross-lottery — correlações Mega↔Lotofácil
+- [ ] Meta-aprendizado — pesos dinâmicos por performance recente
+- [ ] Dados externos (clima, índices econômicos)
 - [ ] LSTM para séries temporais
 - [ ] Optuna para otimização de hiperparâmetros
-- [ ] Coleta de valor do prêmio (API da Caixa)
 - [ ] Geocoding de cidades (lat/lon)
-- [ ] API da fase da lua
 - [ ] Dashboard web com visualizações
