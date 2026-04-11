@@ -87,4 +87,27 @@ def _migrar(conn: sqlite3.Connection):
     for col, tipo in novas.items():
         if col not in colunas:
             conn.execute(f"ALTER TABLE concursos ADD COLUMN {col} {tipo}")
+
+    # Tabela de padrões descobertos (banco de conhecimento)
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS padroes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            jogo TEXT NOT NULL,
+            nome TEXT NOT NULL,
+            cat TEXT NOT NULL,
+            desc TEXT NOT NULL,
+            formula TEXT NOT NULL,
+            p_valor REAL NOT NULL,
+            lift REAL NOT NULL,
+            taxa_obs REAL NOT NULL,
+            taxa_esp REAL NOT NULL,
+            tentativas INTEGER NOT NULL,
+            descoberto_em TEXT NOT NULL,
+            ultima_validacao TEXT NOT NULL,
+            concursos_na_validacao INTEGER NOT NULL,
+            ativo INTEGER DEFAULT 1,
+            UNIQUE(jogo, nome)
+        );
+        CREATE INDEX IF NOT EXISTS idx_padroes_jogo ON padroes(jogo, ativo, p_valor);
+    """)
     conn.commit()

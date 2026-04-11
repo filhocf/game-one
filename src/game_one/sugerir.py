@@ -1,34 +1,44 @@
-"""Gerador de sugestões inteligentes usando padrões do caos."""
+"""Gerador de sugestões — consulta o banco de padrões para montar jogos."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import numpy as np
 
 from . import db
-from .caos import _carregar_concursos, _gerar_hipoteses, _testar_hipotese, _fase_lua
+from .caos import _carregar_concursos, _gerar_hipoteses, _fase_lua
+from .gerador import gerar_hipoteses_programaticas
+from .prospector import carregar_padroes_ativos, prospectar_rodada, stats_padroes
 from .coleta import JOGOS
 
 
 def sugerir(jogo: str, qtd_jogos: int = 5, proximo_dt: datetime | None = None) -> dict:
-    """Gera sugestões ponderadas pelos padrões significativos do caos."""
+    """Gera sugestões usando TODOS os padrões conhecidos do banco."""
     info = JOGOS[jogo]
     max_num = info["max_numero"]
     qtd_dez = info["qtd_dezenas"]
 
+    # 1. Garantir que o banco de padrões tem conteúdo
+    padroes_db = carregar_padroes_ativos(jogo)
+    if len(padroes_db) < 10:
+        print("  Banco de padrões vazio/pequeno — rodando prospecção inicial...", flush=True)
+        prospectar_rodada(jogo, verbose=True)
+        padroes_db = carregar_padroes_ativos(jogo)
+
+    # 2. Carregar concursos e montar contexto do próximo
     concursos = _carregar_concursos(jogo)
     ultimo = concursos[-1]
 
-    # Dados do próximo concurso (estimados)
     if not proximo_dt:
-        # Estimar próxima data baseado no padrão de dias
         proximo_dt = datetime.now().replace(hour=20, minute=0, second=0, microsecond=0)
 
     prox = {
         "numero": ultimo["numero"] + 1,
         "dt": proximo_dt,
         "dezenas": set(),
+        "dezenas_ord": [],
         "prev_dezenas": ultimo["dezenas"],
         "prev_dezenas_ord": sorted(ultimo["dezenas"]),
+        "prev2_dezenas": concursos[-2]["dezenas"] if len(concursos) > 1 else set(),
         "local": ultimo["local"],
         "acumulado": ultimo["acumulado"],
         "valor_acumulado": ultimo["valor_acumulado"],
@@ -37,35 +47,38 @@ def sugerir(jogo: str, qtd_jogos: int = 5, proximo_dt: datetime | None = None) -
         "ordem_sorteio": [],
     }
 
-    # 1. Testar todas as hipóteses no histórico para saber quais são significativas
-    hipoteses = _gerar_hipoteses(max_num)
-    pesos_hipotese = {}
-    for h in hipoteses:
-        r = _testar_hipotese(h, concursos, max_num, qtd_dez)
-        if r and r["p_valor"] < 0.15:  # só hipóteses com alguma significância
-            pesos_hipotese[h["nome"]] = {
-                "lift": r["lift"],
-                "p_valor": r["p_valor"],
-                "peso": (1 - r["p_valor"]) * abs(r["lift"] - 1),  # quanto mais significativo e maior lift, mais peso
-                "fn": h["fn"],
-                "desc": h["desc"],
-            }
+    # 3. Reconstruir funções das hipóteses para aplicar ao próximo concurso
+    hipoteses_caos = {h["nome"]: h for h in _gerar_hipoteses(max_num)}
+    hipoteses_prog = {h["nome"]: h for h in gerar_hipoteses_programaticas(max_num)}
+    todas_hipoteses = {**hipoteses_caos, **hipoteses_prog}
 
-    # 2. Para cada número, calcular score baseado nas hipóteses
-    scores = np.zeros(max_num + 1)  # index 0 não usado
+    # 4. Calcular scores usando padrões do banco
+    scores = np.zeros(max_num + 1)
     contribuicoes = {n: [] for n in range(1, max_num + 1)}
+    padroes_usados = []
 
-    for nome, info_h in pesos_hipotese.items():
-        nums_sugeridos = info_h["fn"](prox)
+    for p in padroes_db:
+        h = todas_hipoteses.get(p["nome"])
+        if not h:
+            continue
+
+        nums_sugeridos = h["fn"](prox)
         if not nums_sugeridos:
             continue
+
+        # Peso: quanto menor o p-valor e maior o lift, mais peso
+        peso = (1 - p["p_valor"]) * abs(p["lift"] - 1)
+        direcao = 1 if p["lift"] > 1 else -0.5
+
         for n in nums_sugeridos:
             if 1 <= n <= max_num:
-                bonus = info_h["peso"] * (1 if info_h["lift"] > 1 else -0.5)
+                bonus = peso * direcao
                 scores[n] += bonus
-                contribuicoes[n].append((nome, round(bonus, 3)))
+                contribuicoes[n].append((p["nome"], round(bonus, 3)))
 
-    # 3. Adicionar baseline de frequência histórica
+        padroes_usados.append(p)
+
+    # 5. Adicionar baseline de frequência e atraso
     from .analise import carregar_df, frequencia, atraso
     df = carregar_df(jogo)
     freq = frequencia(df, max_num)
@@ -73,14 +86,14 @@ def sugerir(jogo: str, qtd_jogos: int = 5, proximo_dt: datetime | None = None) -
     total = len(df)
 
     for n in range(1, max_num + 1):
-        scores[n] += (freq[n] / total) * 0.3  # frequência histórica
-        scores[n] += min(atr[n] / 15, 0.5) * 0.2  # atraso (números "devidos")
+        scores[n] += (freq[n] / total) * 0.3
+        scores[n] += min(atr[n] / 15, 0.5) * 0.2
 
-    # 4. Normalizar e gerar jogos
+    # 6. Normalizar e gerar jogos
     scores_valid = scores[1:]
     if scores_valid.max() > scores_valid.min():
         scores_valid = (scores_valid - scores_valid.min()) / (scores_valid.max() - scores_valid.min())
-    probs = scores_valid + 0.01  # evitar zero
+    probs = scores_valid + 0.01
     probs = probs / probs.sum()
 
     jogos = []
@@ -98,8 +111,8 @@ def sugerir(jogo: str, qtd_jogos: int = 5, proximo_dt: datetime | None = None) -
 
     jogos.sort(key=lambda j: -j["score"])
 
-    # Top números por score
     ranking = sorted(range(1, max_num + 1), key=lambda n: -scores[n])
+    st = stats_padroes(jogo)
 
     return {
         "jogo": jogo,
@@ -107,12 +120,13 @@ def sugerir(jogo: str, qtd_jogos: int = 5, proximo_dt: datetime | None = None) -
         "concurso_alvo": prox["numero"],
         "data_alvo": proximo_dt.strftime("%d/%m/%Y"),
         "fase_lua": _fase_lua(proximo_dt),
-        "hipoteses_usadas": len(pesos_hipotese),
+        "padroes_no_banco": st["ativos"],
+        "padroes_usados": len(padroes_usados),
         "top_numeros": [(n, round(float(scores[n]), 3)) for n in ranking[:qtd_dez + 5]],
         "contribuicoes": {n: contribuicoes[n] for n in ranking[:10] if contribuicoes[n]},
         "jogos": jogos[:qtd_jogos],
         "hipoteses_significativas": [
-            {"nome": k, "desc": v["desc"], "lift": v["lift"], "p_valor": v["p_valor"]}
-            for k, v in sorted(pesos_hipotese.items(), key=lambda x: x[1]["p_valor"])
+            {"nome": p["nome"], "desc": p["desc"], "lift": p["lift"], "p_valor": p["p_valor"]}
+            for p in sorted(padroes_usados, key=lambda x: x["p_valor"])[:15]
         ],
     }

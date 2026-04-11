@@ -170,6 +170,18 @@ def cmd_gerador(args):
             print(f"       {h['desc']}")
 
 
+def cmd_prospectar(args):
+    from .prospector import prospectar_continuo, prospectar_rodada, stats_padroes
+
+    if args.continuo:
+        prospectar_continuo(args.jogo, intervalo=args.intervalo)
+    else:
+        for jogo in _jogos(args):
+            prospectar_rodada(jogo)
+            s = stats_padroes(jogo)
+            print(f"\n  Banco: {s['ativos']} ativos / {s['total']} total | melhor p={s['melhor_p']}")
+
+
 def cmd_sugerir(args):
     from .sugerir import sugerir
 
@@ -177,9 +189,9 @@ def cmd_sugerir(args):
         r = sugerir(jogo, qtd_jogos=args.qtd)
 
         print(f"\n{'='*70}")
-        print(f"  {r['nome']} — Sugestões Inteligentes (Caos + Estatística)")
+        print(f"  {r['nome']} — Sugestões Inteligentes")
         print(f"  Concurso-alvo: {r['concurso_alvo']} ({r['data_alvo']}) | Lua: {r['fase_lua']}")
-        print(f"  {r['hipoteses_usadas']} hipóteses significativas usadas")
+        print(f"  Banco: {r['padroes_no_banco']} padrões ativos | {r['padroes_usados']} aplicáveis ao próximo")
         print(f"{'='*70}")
 
         print(f"\n  Hipóteses ativas:")
@@ -289,6 +301,11 @@ def main():
     p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
     p.add_argument("--qtd", type=int, default=5, help="Quantidade de jogos sugeridos")
 
+    p = sub.add_parser("prospectar", help="Buscar novos padrões (contínuo ou rodada única)")
+    p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
+    p.add_argument("--continuo", action="store_true", help="Rodar em loop contínuo")
+    p.add_argument("--intervalo", type=int, default=5, help="Segundos entre rodadas (modo contínuo)")
+
     p = sub.add_parser("correlacoes", help="Analisar correlações (dia, mês, UF)")
     p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
 
@@ -310,7 +327,7 @@ def main():
         run_tui()
         return
 
-    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "gerador": cmd_gerador, "backtesting": cmd_backtesting}[args.comando](args)
+    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "gerador": cmd_gerador, "prospectar": cmd_prospectar, "backtesting": cmd_backtesting}[args.comando](args)
 
 
 if __name__ == "__main__":
