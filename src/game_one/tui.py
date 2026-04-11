@@ -19,6 +19,7 @@ class HomeScreen(Screen):
         ("p", "prospectar", "Prospector"),
         ("s", "sugerir", "Sugestões"),
         ("f", "conferir", "Conferir apostas"),
+        ("v", "avaliar", "Avaliação"),
         ("b", "backtesting", "Backtesting"),
         ("q", "quit", "Sair"),
     ]
@@ -37,6 +38,7 @@ class HomeScreen(Screen):
                 "  [bold green]2.[/] 🔬 Prospector → busca padrões novos (alimenta o cérebro)\n"
                 "  [bold green]3.[/] 💡 Sugestões → gera jogos para apostar\n"
                 "  [bold green]4.[/] ✅ Conferir → confere após o sorteio\n"
+                "  [bold green]5.[/] 📈 Avaliar → mede acuidade nos últimos concursos\n"
                 "  [dim]Os demais são ferramentas de análise (opcional)[/]\n",
                 id="guide",
             )
@@ -46,6 +48,8 @@ class HomeScreen(Screen):
             with Horizontal(classes="menu-row"):
                 yield Button("3. 💡 Sugestões [S]", id="btn-sugerir", variant="success")
                 yield Button("4. ✅ Conferir [F]", id="btn-conferir", variant="default")
+            with Horizontal(classes="menu-row"):
+                yield Button("5. 📈 Avaliar [V]", id="btn-avaliar", variant="primary")
             yield Static("\n[dim]── Ferramentas de análise ──[/]")
             with Horizontal(classes="menu-row"):
                 yield Button("🔍 Caos [A]", id="btn-caos", variant="primary")
@@ -78,6 +82,7 @@ class HomeScreen(Screen):
             "btn-prospectar": "prospectar",
             "btn-sugerir": "sugerir",
             "btn-conferir": "conferir",
+            "btn-avaliar": "avaliar",
             "btn-backtesting": "backtesting",
         }
         action = actions.get(event.button.id)
@@ -104,6 +109,9 @@ class HomeScreen(Screen):
 
     def action_backtesting(self):
         self.app.push_screen("backtesting")
+
+    def action_avaliar(self):
+        self.app.push_screen("avaliar")
 
     def action_quit(self):
         self.app.exit()
@@ -403,6 +411,64 @@ class ProspectorScreen(JogoSelectScreen):
             pass
 
 
+class AvaliacaoScreen(JogoSelectScreen):
+    def compose(self):
+        yield Header()
+        with VerticalScroll():
+            yield Static("📈 [bold]Avaliação Retroativa — Acuidade do Sistema[/]\n")
+            yield self._jogo_select()
+            yield Button("Avaliar últimos 10 concursos", id="btn-go", variant="primary")
+            yield Static("", id="result")
+        yield Footer()
+
+    def on_button_pressed(self, event):
+        if event.button.id == "btn-go":
+            self._run()
+
+    @work(thread=True)
+    def _run(self):
+        jogo = self.query_one("#jogo-select", Select).value
+        result = self.query_one("#result", Static)
+        result.update("⏳ Simulando retroativamente (pode demorar)...")
+        try:
+            from .avaliacao import avaliar
+            jogos = list(JOGOS.keys()) if jogo == "todos" else [jogo]
+            lines = []
+            for j in jogos:
+                r = avaliar(j, ultimos=10, jogos_por_concurso=3)
+                info = JOGOS[j]
+                qtd_dez = info["qtd_dezenas"]
+
+                lines.append(f"\n[bold]{r['nome']}[/] — {r['concursos_avaliados']} concursos | {r['padroes_no_banco']} padrões\n")
+
+                for res in r["resultados"]:
+                    res_str = " ".join(f"{d:02d}" for d in res["resultado"])
+                    ac_top = res["ranking_top"].get(qtd_dez, 0)
+                    mj = max(res["jogos"], key=lambda x: x["acertos"])
+                    lines.append(f"  #{res['concurso']} ({res['data']}): {res_str}  Top{qtd_dez}={ac_top}  Melhor={mj['acertos']}")
+
+                lines.append(f"\n[bold]Resumo:[/]")
+                lines.append(f"  Baseline aleatório:  {r['baseline']}")
+                lines.append(f"  Média Top {qtd_dez}:         {r['media_top_n']}")
+                lines.append(f"  Média jogos:         {r['media_jogos']}")
+                lines.append(f"  Melhor jogo (max):   {r['melhor_jogo_max']}")
+                if r["premios_detalhe"]:
+                    det = ", ".join(f"{v}x {k}" for k, v in r["premios_detalhe"].items())
+                    lines.append(f"  Prêmios:             {det}")
+
+                lines.append(f"\n[bold]Diagnóstico:[/]")
+                for d in r["diagnostico"]:
+                    lines.append(f"  {d}")
+                lines.append(f"\n[bold]Recomendações:[/]")
+                for rec in r["recomendacoes"]:
+                    lines.append(f"  {rec}")
+
+            result.update("\n".join(lines))
+        except Exception as e:
+            import traceback
+            result.update(f"❌ Erro: {e}\n{traceback.format_exc()}")
+
+
 class BacktestingScreen(JogoSelectScreen):
     def compose(self):
         yield Header()
@@ -492,6 +558,7 @@ class GameOneApp(App):
         "analisar": CaosScreen,
         "gerador": GeradorScreen,
         "prospectar": ProspectorScreen,
+        "avaliar": AvaliacaoScreen,
         "sugerir": SugerirScreen,
         "conferir": ConferirScreen,
         "backtesting": BacktestingScreen,

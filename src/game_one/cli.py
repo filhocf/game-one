@@ -182,6 +182,14 @@ def cmd_prospectar(args):
             print(f"\n  Banco: {s['ativos']} ativos / {s['total']} total | melhor p={s['melhor_p']}")
 
 
+def cmd_avaliar(args):
+    from .avaliacao import avaliar, imprimir_avaliacao
+
+    for jogo in _jogos(args):
+        r = avaliar(jogo, ultimos=args.ultimos, jogos_por_concurso=args.qtd)
+        imprimir_avaliacao(r)
+
+
 def cmd_sugerir(args):
     from .sugerir import sugerir
 
@@ -306,6 +314,11 @@ def main():
     p.add_argument("--continuo", action="store_true", help="Rodar em loop contínuo")
     p.add_argument("--intervalo", type=int, default=5, help="Segundos entre rodadas (modo contínuo)")
 
+    p = sub.add_parser("avaliar", help="Avaliação retroativa — mede acuidade nos últimos concursos")
+    p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
+    p.add_argument("--ultimos", type=int, default=10, help="Quantos concursos simular")
+    p.add_argument("--qtd", type=int, default=3, help="Jogos por concurso")
+
     p = sub.add_parser("correlacoes", help="Analisar correlações (dia, mês, UF)")
     p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
 
@@ -327,7 +340,7 @@ def main():
         run_tui()
         return
 
-    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "gerador": cmd_gerador, "prospectar": cmd_prospectar, "backtesting": cmd_backtesting}[args.comando](args)
+    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "gerador": cmd_gerador, "prospectar": cmd_prospectar, "avaliar": cmd_avaliar, "backtesting": cmd_backtesting}[args.comando](args)
 
 
 if __name__ == "__main__":
