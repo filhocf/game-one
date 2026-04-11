@@ -86,34 +86,44 @@ def cruzar(nome_a: str, nome_b: str, max_num: int) -> dict | None:
 def encadear(nome: str, max_num: int) -> dict | None:
     """Encadeia: aplica uma op extra no resultado de uma hipótese unária."""
     parts = nome.split(".")
-    if len(parts) != 2:
-        return None
-    campo, op1 = parts
-    if campo not in FIELDS or op1 not in UNARY_OPS:
+    if len(parts) != 2 or ">" in parts[1]:
+        # Já é cadeia ou não é unário simples
+        pass
+    campo = parts[0]
+    ops_chain = parts[1] if len(parts) == 2 else None
+    if not ops_chain or campo not in FIELDS:
         return None
 
-    op2 = random.choice(_all_op_names())
-    tag = f"{campo}.{op1}>{op2}"
+    # Permitir encadear sobre cadeias existentes (profundidade N)
+    existing_ops = ops_chain.split(">")
+    if len(existing_ops) >= 6:
+        return None  # limitar profundidade máxima
+
+    op_new = random.choice(_all_op_names())
+    new_chain = ops_chain + ">" + op_new
+    tag = f"{campo}.{new_chain}"
 
     ff = FIELDS[campo]
-    of1 = UNARY_OPS[op1]
-    of2 = UNARY_OPS[op2]
+    ops_list = [UNARY_OPS[o] for o in new_chain.split(">") if o in UNARY_OPS]
+    if len(ops_list) != len(new_chain.split(">")):
+        return None
 
-    def fn(c, _ff=ff, _of1=of1, _of2=of2, _mx=max_num):
+    def fn(c, _ff=ff, _ops=ops_list, _mx=max_num):
         v = _ff(c)
-        r1 = _of1(v)
-        if not isinstance(r1, int):
+        for op in _ops:
+            if not isinstance(v, (int, float)):
+                return set()
+            v = op(int(v))
+        if not isinstance(v, int):
             return set()
-        r2 = _of2(r1)
-        if not isinstance(r2, int):
-            return set()
-        r2 = r2 % _mx
-        if r2 == 0:
-            r2 = _mx
-        return {r2} if 1 <= r2 <= _mx else set()
+        v = v % _mx
+        if v == 0:
+            v = _mx
+        return {v} if 1 <= v <= _mx else set()
 
-    return {"nome": tag, "cat": "evo-cadeia", "fn": fn,
-            "desc": f"{campo} → {op1} → {op2} → dezena"}
+    depth = len(ops_list)
+    return {"nome": tag, "cat": f"evo-cadeia-d{depth}", "fn": fn,
+            "desc": f"{campo} → {'→'.join(new_chain.split('>'))} → dezena (depth={depth})"}
 
 
 def combinar_campo_com_set(max_num: int) -> dict | None:
@@ -179,6 +189,54 @@ def inventar_window(max_num: int) -> dict | None:
             "desc": f"Se {campo_nome} {comparador} → apostar {faixa}"}
 
 
+def compor_conjuntos(max_num: int) -> dict | None:
+    """Combina dois extratores de conjunto com operação de conjuntos."""
+    s1_nome = random.choice(_all_set_names())
+    s2_nome = random.choice([s for s in _all_set_names() if s != s1_nome])
+    op = random.choice(["inter", "union", "diff"])
+
+    s1_fn = SET_EXTRACTORS[s1_nome]
+    s2_fn = SET_EXTRACTORS[s2_nome]
+    tag = f"setop.{s1_nome}_{op}_{s2_nome}"
+
+    def fn(c, _s1=s1_fn, _s2=s2_fn, _op=op, _mx=max_num):
+        a = _s1(c, _mx)
+        b = _s2(c, _mx)
+        if _op == "inter":
+            return a & b
+        elif _op == "union":
+            return a | b
+        else:
+            return a - b
+
+    return {"nome": tag, "cat": "evo-setop", "fn": fn,
+            "desc": f"set({s1_nome}) {op} set({s2_nome})"}
+
+
+def expressao_aninhada(max_num: int) -> dict | None:
+    """Cria expressão binária aninhada: op(campo_a op campo_b, campo_c) → dezena."""
+    campos = random.sample(_all_field_names(), 3)
+    ops = [random.choice(_all_binary_names()) for _ in range(2)]
+
+    fa, fb, fc = FIELDS[campos[0]], FIELDS[campos[1]], FIELDS[campos[2]]
+    op1, op2 = BINARY_OPS[ops[0]], BINARY_OPS[ops[1]]
+    tag = f"nest.({campos[0]}{ops[0]}{campos[1]}){ops[1]}{campos[2]}"
+
+    def fn(c, _fa=fa, _fb=fb, _fc=fc, _o1=op1, _o2=op2, _mx=max_num):
+        a, b, cc = _fa(c), _fb(c), _fc(c)
+        try:
+            r1 = int(_o1(a, b))
+            r2 = int(_o2(r1, cc)) % _mx
+        except:
+            return set()
+        if r2 == 0:
+            r2 = _mx
+        return {r2} if 1 <= r2 <= _mx else set()
+
+    return {"nome": tag, "cat": "evo-aninhada", "fn": fn,
+            "desc": f"({campos[0]} {ops[0]} {campos[1]}) {ops[1]} {campos[2]} → dezena"}
+
+
 # ── Builders auxiliares ────────────────────────────────────────────────
 
 def _build_unary(tag: str, max_num: int) -> dict | None:
@@ -236,11 +294,9 @@ def _build_binary(tag: str, max_num: int) -> dict | None:
 # ── Gerador evolutivo principal ────────────────────────────────────────
 
 def gerar_evolucoes(padroes_ativos: list[dict], max_num: int, qtd: int = 50) -> list[dict]:
-    """Gera hipóteses novas por mutação, cruzamento e invenção."""
+    """Gera hipóteses novas por mutação, cruzamento, invenção e composição."""
     novas = []
     nomes_existentes = {p["nome"] for p in padroes_ativos}
-
-    # Nomes dos padrões ativos para mutar/cruzar
     nomes = [p["nome"] for p in padroes_ativos]
 
     tentativas = 0
@@ -249,27 +305,25 @@ def gerar_evolucoes(padroes_ativos: list[dict], max_num: int, qtd: int = 50) -> 
     while len(novas) < qtd and tentativas < max_tent:
         tentativas += 1
         h = None
-        estrategia = random.random()
+        r = random.random()
 
-        if estrategia < 0.25 and nomes:
-            # Mutação de unário
+        if r < 0.18 and nomes:
             h = mutar_unario(random.choice(nomes), max_num)
-        elif estrategia < 0.45 and nomes:
-            # Mutação de binário
+        elif r < 0.32 and nomes:
             h = mutar_binario(random.choice(nomes), max_num)
-        elif estrategia < 0.60 and len(nomes) >= 2:
-            # Cruzamento
+        elif r < 0.42 and len(nomes) >= 2:
             a, b = random.sample(nomes, 2)
             h = cruzar(a, b, max_num)
-        elif estrategia < 0.70 and nomes:
-            # Encadeamento
+        elif r < 0.55 and nomes:
             h = encadear(random.choice(nomes), max_num)
-        elif estrategia < 0.85:
-            # Combinar set com campo
+        elif r < 0.65:
             h = combinar_campo_com_set(max_num)
-        else:
-            # Inventar window
+        elif r < 0.75:
             h = inventar_window(max_num)
+        elif r < 0.85:
+            h = compor_conjuntos(max_num)
+        else:
+            h = expressao_aninhada(max_num)
 
         if h and h["nome"] not in nomes_existentes:
             nomes_existentes.add(h["nome"])
