@@ -31,15 +31,25 @@ class HomeScreen(Screen):
                 id="title",
             )
             yield Static(self._status_text(), id="status")
+            yield Static(
+                "[bold]Como usar:[/]\n"
+                "  [bold green]1.[/] 📥 Coletar → atualiza resultados da Caixa\n"
+                "  [bold green]2.[/] 🔬 Prospector → busca padrões novos (alimenta o cérebro)\n"
+                "  [bold green]3.[/] 💡 Sugestões → gera jogos para apostar\n"
+                "  [bold green]4.[/] ✅ Conferir → confere após o sorteio\n"
+                "  [dim]Os demais são ferramentas de análise (opcional)[/]\n",
+                id="guide",
+            )
             with Horizontal(classes="menu-row"):
-                yield Button("📥 Coletar [C]", id="btn-coletar", variant="default")
+                yield Button("1. 📥 Coletar [C]", id="btn-coletar", variant="default")
+                yield Button("2. 🔬 Prospector [P]", id="btn-prospectar", variant="warning")
+            with Horizontal(classes="menu-row"):
+                yield Button("3. 💡 Sugestões [S]", id="btn-sugerir", variant="success")
+                yield Button("4. ✅ Conferir [F]", id="btn-conferir", variant="default")
+            yield Static("\n[dim]── Ferramentas de análise ──[/]")
+            with Horizontal(classes="menu-row"):
                 yield Button("🔍 Caos [A]", id="btn-caos", variant="primary")
-                yield Button("🧬 Gerador [G]", id="btn-gerador", variant="warning")
-            with Horizontal(classes="menu-row"):
-                yield Button("🔬 Prospector [P]", id="btn-prospectar", variant="warning")
-                yield Button("💡 Sugestões [S]", id="btn-sugerir", variant="success")
-                yield Button("✅ Conferir [F]", id="btn-conferir", variant="default")
-            with Horizontal(classes="menu-row"):
+                yield Button("🧬 Gerador [G]", id="btn-gerador", variant="default")
                 yield Button("📊 Backtesting [B]", id="btn-backtesting", variant="default")
             yield Static("", id="output")
         yield Footer()
@@ -456,6 +466,10 @@ Screen {
 .menu-row Button {
     margin: 0 1;
     min-width: 24;
+}
+#guide {
+    padding: 0 1 1 1;
+    color: $text-muted;
 }
 #output, #result, #progress {
     padding: 1;
