@@ -190,6 +190,24 @@ def cmd_avaliar(args):
         imprimir_avaliacao(r)
 
 
+def cmd_coocorrencia(args):
+    from .coocorrencia import descobrir_coocorrencias
+
+    for jogo in _jogos(args):
+        r = descobrir_coocorrencias(jogo, top=args.top)
+        print(f"\n{'='*60}")
+        print(f"  {r['nome']} — Co-ocorrências ({r['total_concursos']} concursos)")
+        print(f"{'='*60}")
+        if r["pares_positivos"]:
+            print(f"\n  Pares que saem JUNTOS acima do esperado:")
+            for p in r["pares_positivos"][:args.top]:
+                print(f"    {p['par'][0]:02d}-{p['par'][1]:02d}  obs={p['obs']} esp={p['esperado']} lift={p['lift']:.2f} p={p['p_valor']:.4f}")
+        if r["pares_negativos"]:
+            print(f"\n  Pares que RARAMENTE saem juntos:")
+            for p in r["pares_negativos"][:10]:
+                print(f"    {p['par'][0]:02d}-{p['par'][1]:02d}  obs={p['obs']} esp={p['esperado']} lift={p['lift']:.2f} p={p['p_valor']:.4f}")
+
+
 def cmd_sugerir(args):
     from .sugerir import sugerir
 
@@ -199,7 +217,12 @@ def cmd_sugerir(args):
         print(f"\n{'='*70}")
         print(f"  {r['nome']} — Sugestões Inteligentes")
         print(f"  Concurso-alvo: {r['concurso_alvo']} ({r['data_alvo']}) | Lua: {r['fase_lua']}")
-        print(f"  Banco: {r['padroes_no_banco']} padrões ativos | {r['padroes_usados']} aplicáveis ao próximo")
+        print(f"  Banco: {r['padroes_no_banco']} padrões ativos | {r['padroes_usados']} aplicáveis")
+        extras = []
+        if r.get('meta_aplicado'): extras.append("meta-learning")
+        if r.get('cross_lottery'): extras.append("cross-lottery")
+        if extras:
+            print(f"  Sinais extras: {', '.join(extras)}")
         print(f"{'='*70}")
 
         print(f"\n  Hipóteses ativas:")
@@ -319,6 +342,10 @@ def main():
     p.add_argument("--ultimos", type=int, default=10, help="Quantos concursos simular")
     p.add_argument("--qtd", type=int, default=3, help="Jogos por concurso")
 
+    p = sub.add_parser("coocorrencia", help="Descobrir pares de números que co-ocorrem")
+    p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
+    p.add_argument("--top", type=int, default=20, help="Quantidade de pares")
+
     p = sub.add_parser("correlacoes", help="Analisar correlações (dia, mês, UF)")
     p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
 
@@ -340,7 +367,7 @@ def main():
         run_tui()
         return
 
-    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "gerador": cmd_gerador, "prospectar": cmd_prospectar, "avaliar": cmd_avaliar, "backtesting": cmd_backtesting}[args.comando](args)
+    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "gerador": cmd_gerador, "prospectar": cmd_prospectar, "avaliar": cmd_avaliar, "coocorrencia": cmd_coocorrencia, "backtesting": cmd_backtesting}[args.comando](args)
 
 
 if __name__ == "__main__":
