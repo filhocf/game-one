@@ -146,6 +146,30 @@ def cmd_caos(args):
             print(f"       {h['desc']}")
 
 
+def cmd_gerador(args):
+    from .gerador import rodar_gerador
+
+    for jogo in _jogos(args):
+        r = rodar_gerador(jogo, top=args.top)
+
+        print(f"{'='*70}")
+        print(f"  {r['nome']} — Gerador Programático de Hipóteses")
+        print(f"  {r['total_concursos']} concursos | {r['hipoteses_testadas']} combinações | {r['hipoteses_significativas']} significativas")
+        print(f"{'='*70}")
+
+        if not r["resultados"]:
+            print("\n  Nenhum padrão significativo encontrado.")
+            continue
+
+        print(f"\n  {'#':>3}  {'p-valor':>8}  {'lift':>5}  {'taxa':>6}  {'esp':>6}  {'n':>4}  {'cat':<14} {'hipótese'}")
+        print(f"  {'─'*80}")
+        for i, h in enumerate(r["resultados"], 1):
+            sig = "***" if h["p_valor"] < 0.01 else "** " if h["p_valor"] < 0.05 else "*  "
+            direcao = "↑" if h["lift"] > 1 else "↓" if h["lift"] < 1 else "="
+            print(f"  {i:3d}  {h['p_valor']:8.4f}  {h['lift']:4.2f}{direcao} {h['taxa_obs']:5.1%}  {h['taxa_esp']:5.1%}  {h['tentativas']:4d}  {h['cat']:<14} {h['nome']} {sig}")
+            print(f"       {h['desc']}")
+
+
 def cmd_sugerir(args):
     from .sugerir import sugerir
 
@@ -268,13 +292,25 @@ def main():
     p = sub.add_parser("correlacoes", help="Analisar correlações (dia, mês, UF)")
     p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
 
+    p = sub.add_parser("gerador", help="Gerador programático de hipóteses combinatórias")
+    p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
+    p.add_argument("--top", type=int, default=30, help="Quantidade de padrões no ranking")
+
     p = sub.add_parser("backtesting", help="Simular previsões em concursos passados")
     p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="todos")
     p.add_argument("--ultimos", type=int, default=30, help="Quantos concursos simular")
     p.add_argument("--metodo", choices=["ml", "caos", "todos"], default="ml", help="Método a testar")
 
+    sub.add_parser("tui", help="Interface visual interativa")
+
     args = parser.parse_args()
-    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "backtesting": cmd_backtesting}[args.comando](args)
+
+    if args.comando == "tui":
+        from .tui import run_tui
+        run_tui()
+        return
+
+    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "gerador": cmd_gerador, "backtesting": cmd_backtesting}[args.comando](args)
 
 
 if __name__ == "__main__":
