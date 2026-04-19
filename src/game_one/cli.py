@@ -302,6 +302,85 @@ def cmd_correlacoes(args):
             print(f"\n  Nenhum desvio significativo encontrado (>8%).")
 
 
+def cmd_filtros(args):
+    from .filtros import avaliar as avaliar_filtros, PERFIS
+    from .anticrowd import score_impopularidade
+
+    jogo = args.jogo
+    if not args.dezenas:
+        # Mostrar perfil esperado
+        p = PERFIS[jogo]
+        info = JOGOS[jogo]
+        print(f"\n  {info['nome']} — Perfil Estrutural Esperado")
+        print(f"  {'─'*50}")
+        for nome, vals in p.items():
+            if nome == "faixas":
+                continue
+            print(f"  {nome:<15} E={vals['e']}  σ={vals['s']}  faixa=[{vals['lo']}, {vals['hi']}]")
+        return
+
+    r = avaliar_filtros(jogo, args.dezenas)
+    imp = score_impopularidade(jogo, args.dezenas)
+    status = "✅ PASSOU" if r["passou"] else "❌ REPROVADO"
+    print(f"\n  {status} (score={r['score']:.0%}, impopularidade={imp:.2f})")
+    for nome, c in r["checks"].items():
+        ok = "✓" if c["ok"] else "✗"
+        print(f"  {ok} {nome:<15} valor={c['valor']}  esperado={c['e']}±{c['s']}  faixa=[{c['lo']},{c['hi']}]")
+
+
+def cmd_wheel(args):
+    from .wheeling import gerar_wheel, simular_wheel
+    from .caos import _carregar_concursos
+    from .anticrowd import rankear
+    from collections import Counter
+
+    jogo = args.jogo
+    info = JOGOS[jogo]
+    concursos = _carregar_concursos(jogo)
+    ultimo = concursos[-1]
+
+    # Gerar pool baseado em frequência recente
+    freq = Counter()
+    for c in concursos[-30:]:
+        freq.update(c["dezenas"])
+    pool = sorted(n for n, _ in freq.most_common(args.pool_size))
+
+    print(f"\n  {info['nome']} — Wheeling System")
+    print(f"  Pool ({len(pool)} nums): {' '.join(f'{n:02d}' for n in pool)}")
+    print(f"  Garantia: {args.garantia} acertos | Método: {args.metodo}")
+    print(f"  Gerando...", flush=True)
+
+    w = gerar_wheel(pool, jogo, garantia=args.garantia,
+                    max_bilhetes=args.max_bilhetes,
+                    prev_dezenas=ultimo["dezenas"],
+                    metodo=args.metodo)
+
+    print(f"\n  Resultado ({w['metodo']}):")
+    print(f"  {w['n_bilhetes']} bilhetes | Cobertura: {w['cobertura_pct']:.0%} | Custo: R${w['custo_total']:.0f}")
+
+    # Rankear por impopularidade
+    ranked = rankear(jogo, w["bilhetes"])
+    print(f"\n  Bilhetes (ordenados por impopularidade):")
+    for i, r in enumerate(ranked, 1):
+        dez = " ".join(f"{d:02d}" for d in r["dezenas"])
+        print(f"  {i:3d}. {dez}  (imp={r['impopularidade']:.2f})")
+
+    # Simular contra último resultado
+    sim = simular_wheel(w, ultimo["dezenas"])
+    print(f"\n  Simulação vs último resultado (concurso {ultimo['numero']}):")
+    print(f"  Pool no resultado: {sim['pool_no_resultado']}/{len(pool)}")
+    print(f"  Melhor bilhete: {sim['melhor_acertos']} acertos")
+
+
+def cmd_roi(args):
+    from .roi import simular_roi, imprimir_roi
+
+    for jogo in _jogos(args):
+        print(f"  Simulando ROI para {JOGOS[jogo]['nome']}...", flush=True)
+        r = simular_roi(jogo, ultimos=args.ultimos, jogos_por_concurso=args.qtd)
+        imprimir_roi(r)
+
+
 def _jogos(args) -> list[str]:
     return list(JOGOS.keys()) if args.jogo == "todos" else [args.jogo]
 
@@ -360,6 +439,23 @@ def main():
 
     sub.add_parser("tui", help="Interface visual interativa")
 
+    # ── Ramo B: Otimização ──
+    p = sub.add_parser("filtros", help="[Ramo B] Avaliar combinação contra filtros estruturais")
+    p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="lotofacil")
+    p.add_argument("dezenas", nargs="*", type=int, help="Dezenas a avaliar (ex: 1 3 5 8 ...)")
+
+    p = sub.add_parser("wheel", help="[Ramo B] Gerar wheeling system (covering design)")
+    p.add_argument("--jogo", choices=list(JOGOS), default="lotofacil")
+    p.add_argument("--garantia", type=int, default=12, help="Acertos mínimos garantidos")
+    p.add_argument("--max-bilhetes", type=int, default=30, help="Limite de bilhetes")
+    p.add_argument("--pool-size", type=int, default=18, help="Tamanho do pool (top frequentes)")
+    p.add_argument("--metodo", choices=["auto", "milp", "estruturado", "greedy"], default="auto")
+
+    p = sub.add_parser("roi", help="[Ramo B] Simulação ROI comparativa (Ramo A vs B vs aleatório)")
+    p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="lotofacil")
+    p.add_argument("--ultimos", type=int, default=15, help="Concursos a simular")
+    p.add_argument("--qtd", type=int, default=5, help="Jogos por concurso")
+
     args = parser.parse_args()
 
     if args.comando == "tui":
@@ -367,7 +463,7 @@ def main():
         run_tui()
         return
 
-    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "gerador": cmd_gerador, "prospectar": cmd_prospectar, "avaliar": cmd_avaliar, "coocorrencia": cmd_coocorrencia, "backtesting": cmd_backtesting}[args.comando](args)
+    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "gerador": cmd_gerador, "prospectar": cmd_prospectar, "avaliar": cmd_avaliar, "coocorrencia": cmd_coocorrencia, "backtesting": cmd_backtesting, "filtros": cmd_filtros, "wheel": cmd_wheel, "roi": cmd_roi}[args.comando](args)
 
 
 if __name__ == "__main__":
