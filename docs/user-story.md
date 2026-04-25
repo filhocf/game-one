@@ -104,13 +104,35 @@ O sistema deve:
 - DataTables para resultados tabulares
 - Workers async para não travar a interface
 
+### F12 — Diagnóstico Avançado (Dinâmica Não-Linear) 🆕 ✅
+> Como usuário, quero que o sistema analise se os sorteios têm estrutura determinística oculta, não apenas padrões estatísticos superficiais.
+
+O sistema deve:
+1. Calcular Permutation Entropy e Sample Entropy (regularidade temporal)
+2. Executar RQA — Recurrence Quantification Analysis (DET, LAM, ENTR)
+3. Estimar Lyapunov Exponent (caos vs ruído vs periodicidade)
+4. Rodar Surrogate Data Testing (validar se padrões são reais)
+5. Detectar Changepoints (mudanças de regime — troca de máquina/bolas)
+
+- `game-one diagnostico --jogo megasena`
+
+### F13 — Integração Multi-Ramo 🆕 ✅
+> Como usuário, quero que o sistema combine todos os sinais (previsão + cobertura + diagnóstico) para gerar jogos otimizados.
+
+- Score composto: freq recente + atraso + tendência curta + anti-crowd + viés diagnóstico
+- Filtros estruturais (soma, pares/ímpares, faixas, repetições)
+- Acompanhamento de resultados para medir acurácia
+
+### F14 — Acompanhamento de Resultados 🆕
+> Como usuário, quero registrar meus jogos e depois conferir automaticamente contra o resultado real, acumulando métricas de performance ao longo do tempo.
+
 ## Evolução Futura
 
+- [ ] Transfer Entropy entre dezenas (fluxo de informação direcional)
+- [ ] GNN temporal sobre grafo de co-ocorrência
+- [ ] Mamba/SSM para dependências de longo alcance
+- [ ] Dados externos (temperatura, manutenção Caixa, operador)
+- [ ] Conformal prediction para calibrar cobertura
+- [ ] Bayesian hierarchical model por regime de máquina
 - [ ] Symbolic regression (PySR) — descobrir fórmulas matemáticas
-- [ ] Cross-lottery — correlações Mega↔Lotofácil
-- [ ] Meta-aprendizado — pesos dinâmicos por performance recente
-- [ ] Dados externos (clima, índices econômicos)
-- [ ] LSTM para séries temporais
-- [ ] Optuna para otimização de hiperparâmetros
-- [ ] Geocoding de cidades (lat/lon)
 - [ ] Dashboard web com visualizações

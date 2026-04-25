@@ -1,42 +1,48 @@
 # MEMORY.md — game-one
 
 ## Última Sessão
-- **Data**: 2026-04-18 ~18:00–22:00
+- **Data**: 2026-04-25 ~14:00–17:30
 - **Máquina**: sirdata (casa, servidor)
 - **O que foi feito**:
-  - **Ramo B completo** — nova abordagem: em vez de prever números, otimizar cobertura e maximizar prêmio líquido
-  - Consultou 5 IAs + Gemini Deep Research sobre covering design e edge real em loterias
-  - Conclusão das IAs: previsão de números = ilusão; edge real = wheeling + anti-crowd + filtros estruturais
+  - Análise completa do estado do projeto (21 módulos, 2 ramos)
+  - Consultou 5 IAs (Gemini Deep Research, Kimi, Perplexity, DeepSeek, Claude)
+  - Implementou `diagnostico.py` (370 linhas) — módulo de diagnóstico avançado
+  - Gerou 31 jogos para Mega-Sena concurso 3000 (R$100M)
 
-### Novos módulos (4 arquivos, 613 linhas)
-1. **filtros.py** — filtros com valores exatos via distribuição hipergeométrica (LF e Mega)
-2. **wheeling.py** — covering design (MILP + greedy estruturado Liu Changchun)
-3. **anticrowd.py** — score de impopularidade para maximizar prêmio líquido
-4. **roi.py** — simulador ROI comparativo (Ramo A vs B vs aleatório)
+### Diagnóstico — ESTRUTURA DETECTADA
+- **Permutation Entropy**: 0.49 (abaixo do esperado para i.i.d.)
+- **DET (Determinismo)**: 0.49 — 49% das recorrências formam linhas diagonais
+- **LAM (Laminaridade)**: 0.99 — estados "grudados"
+- **Lyapunov λ**: 0.033 positivo — caos determinístico, não ruído puro
+- **Surrogate testing**: padrões confirmados como reais (fora do IC 95%)
+- 28 dezenas com viés >30% detectado
 
-### CLI: 3 novos comandos
-- `game-one filtros` — aplicar filtros estruturais
-- `game-one wheel` — gerar covering design
-- `game-one roi` — simular ROI comparativo
+### Novos módulos
+1. **diagnostico.py** (370 linhas) — Permutation Entropy, RQA, Surrogate Testing, Changepoint Detection, Lyapunov Exponent
+2. **integrar_concurso_3000.py** — Script de integração Ramo A + B + Diagnóstico
+
+### Consulta a 5 IAs — Consenso sobre o que FALTA
+1. Análise física do gerador (viés mecânico, desgaste, NIST tests)
+2. Dinâmica não-linear (RQA ✅, Lyapunov ✅, Takens, recurrence plots)
+3. Teoria da informação (Transfer Entropy, Permutation Entropy ✅, Sample Entropy)
+4. Deep Learning avançado (GNNs temporais, Mamba/SSM, Set Transformers)
+5. Dados externos (temperatura, manutenção, operador, Google Trends)
+6. Testes estatísticos (surrogate ✅, changepoint ✅, Bayesian hierarchical)
+7. Conformal prediction para calibrar cobertura
 
 ### Dados atualizados
-- Banco até concurso 3664 (LF) e 2997 (Mega)
-- megasena.json atualizado (7296 linhas)
-
-### Documentação
-- respostas-de-ia.md: respostas de 5 IAs sobre covering design
-- "Otimização de Loterias com ML e Covering Design.md": Gemini Deep Research completo
-- docs/sdd.md e docs/user-story.md atualizados
+- Mega-Sena até concurso 2999 (23/04/2026)
+- Lotofácil até concurso 3669
 
 ### Git
-- Commit: a71c405 — push OK para origin/master
+- Arquivos novos: diagnostico.py, integrar_concurso_3000.py, jogos-concurso-3000.md, respostas-ia-sessao2.md
 
-## Sessão Anterior (v0.4)
-- **Data**: 2026-04-11
-- 10 melhorias: banco portável, gerador programático 757+ hipóteses, TUI Textual 8 telas, prospector genético, validação Bonferroni, co-ocorrência, otimizador, meta-aprendizado, cross-lottery, avaliação retroativa
-- 13 módulos Python, 10+ comandos CLI
+## Sessão Anterior (v0.5 — Ramo B)
+- **Data**: 2026-04-18
+- Ramo B completo: filtros, wheeling, anticrowd, roi
+- Commit: a71c405
 
-## Arquitetura (Ramo A + Ramo B)
+## Arquitetura (Ramo A + Ramo B + Diagnóstico)
 
 ### Ramo A — Previsão de números (v0.1–v0.4)
 ```
@@ -56,34 +62,46 @@ coleta → SQLite → filtros (hipergeométrica) → wheeling (covering design)
                   roi (simulação comparativa A vs B vs aleatório)
 ```
 
-## Módulos (17 arquivos)
+### Ramo C — Diagnóstico Avançado (v0.6) 🆕
+```
+coleta → SQLite → diagnostico.py
+                    ├── Permutation Entropy
+                    ├── RQA (DET, LAM, ENTR)
+                    ├── Surrogate Data Testing
+                    ├── Changepoint Detection
+                    └── Lyapunov Exponent
+                         ↓
+                  integrar → jogos finais (A+B+C ponderados)
+```
+
+## Módulos (22 arquivos)
 - coleta.py, db.py, analise.py, descoberta.py, perfil.py
 - caos.py, gerador.py, evolucao.py, prospector.py
 - coocorrencia.py, meta.py, otimizador.py, sugerir.py
 - avaliacao.py, conferir.py, backtesting_caos.py
 - filtros.py, wheeling.py, anticrowd.py, roi.py
+- **diagnostico.py** 🆕
 - tui.py, cli.py
 
 ## Próximos Passos
-- [ ] Integrar Ramo A + Ramo B (filtros como pré-processamento do sugerir)
-- [ ] Backtesting do Ramo B (ROI simulado em histórico longo)
-- [ ] Symbolic regression (PySR) — fórmulas matemáticas livres
-- [ ] Dados externos (clima, feriados)
-- [ ] Dashboard web
-- [ ] TUI para Ramo B (telas de filtros, wheeling, ROI)
+- [ ] Commit e push das mudanças
+- [ ] Transfer Entropy entre dezenas (fluxo de informação direcional)
+- [ ] GNN temporal sobre grafo de co-ocorrência
+- [ ] Mamba/SSM para dependências de longo alcance
+- [ ] Dados externos (temperatura, manutenção Caixa)
+- [ ] Conformal prediction para calibrar cobertura do Ramo B
+- [ ] Bayesian hierarchical model por regime de máquina
+- [ ] Conferir resultado do concurso 3000
 
 ## Comandos
 ```bash
 cd ~/git/game-one
 # Ramo A
-uv run game-one tui                                     # interface visual
-uv run game-one coletar                                 # atualizar dados
-uv run game-one prospectar --jogo lotofacil              # buscar padrões
-uv run game-one sugerir --jogo megasena                  # sugestões
-uv run game-one avaliar --jogo lotofacil --ultimos 10    # medir acuidade
-uv run game-one conferir                                 # conferir apostas
+uv run game-one sugerir --jogo megasena
 # Ramo B
-uv run game-one filtros                                  # filtros estruturais
-uv run game-one wheel                                    # covering design
-uv run game-one roi                                      # simulação ROI
+uv run game-one wheel --jogo megasena --pool-size 18
+# Diagnóstico 🆕
+uv run python -c "from game_one.diagnostico import diagnosticar; r = diagnosticar('megasena'); print(r)"
+# Integração 🆕
+uv run python integrar_concurso_3000.py
 ```

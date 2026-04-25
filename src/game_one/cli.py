@@ -372,6 +372,40 @@ def cmd_wheel(args):
     print(f"  Melhor bilhete: {sim['melhor_acertos']} acertos")
 
 
+def cmd_diagnostico(args):
+    from .diagnostico import diagnosticar
+
+    for jogo in _jogos(args):
+        r = diagnosticar(jogo)
+
+        print(f"\n{'='*70}")
+        print(f"  {r['nome']} — Diagnóstico Avançado ({r['total_concursos']} concursos)")
+        print(f"{'='*70}")
+
+        e = r["entropy"]
+        print(f"\n  [Entropy] PE={e['permutation_entropy']}  SE={e['sample_entropy']}  "
+              f"z={e['pe_z_score']}  → {e['interpretacao']}")
+
+        q = r["rqa"]
+        print(f"  [RQA]     DET={q['DET']}  LAM={q['LAM']}  ENTR={q['ENTR']}  RR={q['RR']}")
+
+        s = r["surrogate"]
+        sigs = [k for k in ("PE", "DET", "LAM") if s[k]["significativo"]]
+        print(f"  [Surrogate] padrão real={s['padrao_real']}  significativos={sigs or 'nenhum'}")
+
+        cp = r["changepoint"]
+        print(f"  [Changepoint] {cp['interpretacao']}  (chi2 mean={cp['chi2_mean']} max={cp['chi2_max']})")
+        for bp in cp.get("breakpoints", [])[:5]:
+            print(f"    → concurso ~{bp['posicao']}  chi2={bp['chi2']}")
+
+        ly = r["lyapunov"]
+        print(f"  [Lyapunov] λ={ly['lyapunov']}  → {ly['interpretacao']}")
+
+        print(f"\n  VEREDITO: {r['veredito']}")
+        if r["sinais_estrutura"]:
+            print(f"  Sinais: {', '.join(r['sinais_estrutura'])}")
+
+
 def cmd_roi(args):
     from .roi import simular_roi, imprimir_roi
 
@@ -451,6 +485,9 @@ def main():
     p.add_argument("--pool-size", type=int, default=18, help="Tamanho do pool (top frequentes)")
     p.add_argument("--metodo", choices=["auto", "milp", "estruturado", "greedy"], default="auto")
 
+    p = sub.add_parser("diagnostico", help="Diagnóstico avançado (entropy, RQA, surrogates, changepoint, Lyapunov)")
+    p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="megasena")
+
     p = sub.add_parser("roi", help="[Ramo B] Simulação ROI comparativa (Ramo A vs B vs aleatório)")
     p.add_argument("--jogo", choices=list(JOGOS) + ["todos"], default="lotofacil")
     p.add_argument("--ultimos", type=int, default=15, help="Concursos a simular")
@@ -463,7 +500,7 @@ def main():
         run_tui()
         return
 
-    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "gerador": cmd_gerador, "prospectar": cmd_prospectar, "avaliar": cmd_avaliar, "coocorrencia": cmd_coocorrencia, "backtesting": cmd_backtesting, "filtros": cmd_filtros, "wheel": cmd_wheel, "roi": cmd_roi}[args.comando](args)
+    {"coletar": cmd_coletar, "descobrir": cmd_descobrir, "conferir": cmd_conferir, "perfil": cmd_perfil, "caos": cmd_caos, "sugerir": cmd_sugerir, "correlacoes": cmd_correlacoes, "gerador": cmd_gerador, "prospectar": cmd_prospectar, "avaliar": cmd_avaliar, "coocorrencia": cmd_coocorrencia, "backtesting": cmd_backtesting, "filtros": cmd_filtros, "wheel": cmd_wheel, "roi": cmd_roi, "diagnostico": cmd_diagnostico}[args.comando](args)
 
 
 if __name__ == "__main__":

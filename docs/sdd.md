@@ -181,9 +181,36 @@ API Caixa ──→ coleta.py ──→ SQLite (concursos + dezenas)
 | v0.2 ✅ | Motor de caos v1 (17 hipóteses em 5 categorias) |
 | v0.3 ✅ | Dados financeiros + 40 hipóteses em 8 categorias + sugerir inteligente |
 | v0.4 ✅ | Gerador programático (757+), prospector, banco de padrões, TUI |
-| v0.5 | Symbolic regression (PySR) — descobrir fórmulas matemáticas |
-| v0.6 | Cross-lottery — correlações Mega↔Lotofácil |
-| v0.7 | Meta-aprendizado — pesos dinâmicos por performance recente |
-| v0.8 | Dados externos (clima, índices econômicos) |
-| v0.9 | LSTM séries temporais + Optuna |
-| v1.0 | Dashboard web |
+| v0.5 ✅ | Ramo B: filtros hipergeométricos, wheeling, anti-crowd, ROI |
+| v0.6 ✅ | Ramo C: diagnóstico avançado (PE, RQA, Lyapunov, surrogate, changepoint) |
+| v0.7 | Transfer Entropy, GNN temporal, Mamba/SSM |
+| v0.8 | Dados externos (temperatura, manutenção, operador) |
+| v0.9 | Conformal prediction, Bayesian hierarchical |
+| v1.0 | Dashboard web + acompanhamento de resultados |
+
+## 11. Módulo diagnostico.py — Diagnóstico Avançado (v0.6)
+
+### 11.1 Conceito
+
+Tratar a loteria como sistema físico dinâmico, não abstração matemática.
+Aplicar ferramentas de dinâmica não-linear e teoria da informação para
+detectar se existe estrutura determinística oculta no ruído.
+
+### 11.2 Testes implementados
+
+1. **Permutation Entropy (PE)**: mede regularidade na ordenação temporal. PE < baseline i.i.d. → estrutura.
+2. **RQA**: Recurrence Quantification Analysis via Takens embedding (dim=3, delay=1). Métricas: DET (determinismo), LAM (laminaridade), ENTR (entropia diagonal).
+3. **Surrogate Data Testing**: 100 shuffled surrogates, compara PE e DET reais vs IC 95%.
+4. **Changepoint Detection**: sliding window chi-square sobre frequências para detectar mudanças de regime.
+5. **Lyapunov Exponent**: estima λ máximo. λ > 0 = caos determinístico.
+
+### 11.3 Resultado (Mega-Sena, 525 concursos, 25/04/2026)
+
+| Métrica | Valor | Interpretação |
+|---------|-------|---------------|
+| PE | 0.49 | Abaixo do i.i.d. (0.999) → estrutura |
+| DET | 0.49 | 49% determinismo |
+| LAM | 0.99 | Laminaridade alta |
+| Lyapunov λ | 0.033 | Caos determinístico |
+| Surrogate | p < 0.05 | Padrões confirmados como reais |
+| Changepoints | 0 | Regime estável |
